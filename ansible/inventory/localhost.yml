@@ -1,0 +1,39 @@
+---
+# Inventory for local Oracle Cloud automation
+all:
+  hosts:
+    localhost:
+      ansible_connection: local
+      ansible_python_interpreter: "{{ ansible_playbook_python }}"
+      
+  vars:
+    # Oracle Cloud configuration
+    oci_config_dir: "{{ ansible_env.HOME }}/.oci"
+    terraform_dir: "{{ playbook_dir }}/../terraform"
+    config_dir: "{{ playbook_dir }}/../terraform"
+    wallet_dir: "{{ playbook_dir }}/../wallet"
+    logs_dir: "{{ playbook_dir }}/../logs"
+    
+    # User-space tool installation paths
+    local_bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+    local_lib_dir: "{{ ansible_env.HOME }}/.local/lib"
+    
+    # Always Free Tier protection
+    always_free_tier: true
+    max_cpu_cores: 1
+    max_storage_gb: 20
+    
+    # Tool versions
+    terraform_version: "1.6.6"
+    oci_cli_version: "latest"
+    
+    # Application deployment configuration
+    test_data_size: "medium"  # small, medium, large
+    wallet_password: "WalletPassword123#"
+    
+    # Deployment phases control
+    skip_environment_setup: false
+    skip_infrastructure: false
+    skip_configuration: false
+    skip_deployment: false
+    skip_testing: false

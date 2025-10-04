@@ -1,0 +1,228 @@
+---
+# Oracle Partition Management Suite Installation Playbook
+# Installs Oracle packages to the deployed Always Free database
+- name: Install Oracle Partition Management Suite
+  hosts: localhost
+  gather_facts: true
+  vars:
+    installation_log: "{{ logs_dir }}/package-installation-{{ ansible_date_time.epoch }}.log"
+    install_suite_path: "{{ playbook_dir }}/../../table-ops/install/install_suite.sql"
+    
+  tasks:
+    - name: Display Package Installation Banner
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║           Oracle Partition Management Suite Installation         ║
+          ║                                                                  ║
+          ║  Installing comprehensive partition management packages:         ║
+          ║  ✅ Logging infrastructure                                       ║
+          ║  ✅ Partition analysis tools                                     ║
+          ║  ✅ Table DDL generators                                         ║
+          ║  ✅ Partition operations                                         ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    # Prerequisites check
+    - name: Check prerequisites
+      block:
+        - name: Verify database connection details exist
+          stat:
+            path: "{{ ansible_dir }}/../connection-details.txt"
+          register: connection_file
+          failed_when: not connection_file.stat.exists
+          
+        - name: Verify installation suite exists
+          stat:
+            path: "{{ install_suite_path }}"
+          register: install_suite
+          failed_when: not install_suite.stat.exists
+          
+        - name: Check if database is accessible
+          command: >
+            {{ local_bin_dir }}/terraform output -raw database_name
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: db_check
+          failed_when: db_check.rc != 0
+
+    # Get database connection information
+    - name: Get database connection details
+      block:
+        - name: Get database name
+          command: "{{ local_bin_dir }}/terraform output -raw database_name"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: database_name
+          
+        - name: Get admin password
+          command: "{{ local_bin_dir }}/terraform output -raw admin_password"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: admin_password
+          
+        - name: Get database ID
+          command: "{{ local_bin_dir }}/terraform output -raw database_id"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: database_id
+
+    # Download and setup database wallet
+    - name: Setup database wallet
+      block:
+        - name: Create wallet directory
+          file:
+            path: "{{ wallet_dir }}"
+            state: directory
+            mode: '0700'
+            
+        - name: Generate database wallet
+          command: >
+            {{ ansible_env.HOME }}/.local/bin/oci db autonomous-database generate-wallet
+            --autonomous-database-id "{{ database_id.stdout }}"
+            --password "WalletPassword123#"
+            --file "{{ wallet_dir }}/wallet.zip"
+          register: wallet_download
+          
+        - name: Extract wallet
+          unarchive:
+            src: "{{ wallet_dir }}/wallet.zip"
+            dest: "{{ wallet_dir }}"
+            remote_src: true
+            
+        - name: Set wallet permissions
+          file:
+            path: "{{ wallet_dir }}"
+            mode: '0700'
+            recurse: true
+
+    # Create installation scripts
+    - name: Create SQL installation script
+      template:
+        src: install_packages.sql.j2
+        dest: "{{ wallet_dir }}/install_packages.sql"
+        mode: '0600'
+      vars:
+        database_name: "{{ database_name.stdout }}"
+        install_suite_path: "{{ install_suite_path }}"
+        timestamp: "{{ ansible_date_time.iso8601 }}"
+
+    # Run installation
+    - name: Install Oracle packages
+      block:
+        - name: Execute package installation
+          shell: |
+            export TNS_ADMIN="{{ wallet_dir }}"
+            echo "ADMIN/{{ admin_password.stdout }}@{{ database_name.stdout }}_HIGH" | \
+            sqlplus -s /nolog @"{{ wallet_dir }}/install_packages.sql"
+          register: installation_result
+          environment:
+            TNS_ADMIN: "{{ wallet_dir }}"
+            
+        - name: Check installation success
+          assert:
+            that:
+              - installation_result.rc == 0
+              - "'ERROR' not in installation_result.stdout"
+            fail_msg: |
+              ❌ Package installation failed:
+              {{ installation_result.stdout }}
+              {{ installation_result.stderr }}
+            success_msg: "✅ Oracle packages installed successfully"
+
+    # Validate installation
+    - name: Validate package installation
+      block:
+        - name: Create validation script
+          template:
+            src: validate_installation.sql.j2
+            dest: "{{ wallet_dir }}/validate_installation.sql"
+            mode: '0600'
+            
+        - name: Run validation tests
+          shell: |
+            export TNS_ADMIN="{{ wallet_dir }}"
+            echo "ADMIN/{{ admin_password.stdout }}@{{ database_name.stdout }}_HIGH" | \
+            sqlplus -s /nolog @"{{ wallet_dir }}/validate_installation.sql"
+          register: validation_result
+          environment:
+            TNS_ADMIN: "{{ wallet_dir }}"
+            
+        - name: Parse validation results
+          set_fact:
+            validation_summary: "{{ validation_result.stdout | regex_findall('Package|VALID|INVALID') }}"
+
+    # Load test data (optional)
+    - name: Load test data
+      block:
+        - name: Create test data script
+          template:
+            src: load_test_data.sql.j2
+            dest: "{{ wallet_dir }}/load_test_data.sql"
+            mode: '0600'
+            
+        - name: Execute test data loading
+          shell: |
+            export TNS_ADMIN="{{ wallet_dir }}"
+            echo "ADMIN/{{ admin_password.stdout }}@{{ database_name.stdout }}_HIGH" | \
+            sqlplus -s /nolog @"{{ wallet_dir }}/load_test_data.sql"
+          register: test_data_result
+          environment:
+            TNS_ADMIN: "{{ wallet_dir }}"
+          failed_when: false
+          
+        - name: Report test data status
+          debug:
+            msg: |
+              {% if test_data_result.rc == 0 %}
+              ✅ Test data loaded successfully
+              {% else %}
+              ⚠️  Test data loading failed (non-critical)
+              {% endif %}
+
+    # Create quick-start scripts
+    - name: Create user convenience scripts
+      template:
+        src: "{{ item.src }}"
+        dest: "{{ ansible_dir }}/../{{ item.dest }}"
+        mode: '0755'
+      loop:
+        - { src: "connect-db.sh.j2", dest: "connect-db.sh" }
+        - { src: "run-examples.sh.j2", dest: "run-examples.sh" }
+      vars:
+        database_name: "{{ database_name.stdout }}"
+        admin_password: "{{ admin_password.stdout }}"
+        wallet_dir: "{{ wallet_dir }}"
+
+    # Display completion summary
+    - name: Display installation completion
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║           🎉 INSTALLATION COMPLETED SUCCESSFULLY! 🎉            ║
+          ║                                                                  ║
+          ║  Oracle Partition Management Suite is now ready for use!        ║
+          ║                                                                  ║
+          ║  📦 Installed Components:                                        ║
+          ║  ✅ Logging infrastructure (logging_pkg)                        ║
+          ║  ✅ Table operations package (table_ops_pkg)                    ║
+          ║  ✅ Partition analysis tools (partition_analysis_pkg)           ║
+          ║  ✅ DDL generation utilities (table_ddl_pkg)                    ║
+          ║  ✅ Test data and examples                                       ║
+          ║                                                                  ║
+          ║  🚀 Quick Start:                                                 ║
+          ║  1. Connect: ./connect-db.sh                                     ║
+          ║  2. Run examples: ./run-examples.sh                             ║
+          ║  3. Browse: {{ service_console.stdout | default('Service Console') }}
+          ║                                                                  ║
+          ║  💰 Cost: $0.00 (Always Free tier)                              ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    # Cleanup sensitive files
+    - name: Secure cleanup
+      file:
+        path: "{{ item }}"
+        state: absent
+      loop:
+        - "{{ wallet_dir }}/install_packages.sql"
+        - "{{ wallet_dir }}/validate_installation.sql"
+        - "{{ wallet_dir }}/load_test_data.sql"

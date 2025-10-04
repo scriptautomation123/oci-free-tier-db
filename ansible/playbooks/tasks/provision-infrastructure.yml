@@ -1,0 +1,104 @@
+---
+# Infrastructure Provisioning Tasks (Terraform Integration)
+# This task file handles Terraform operations for infrastructure provisioning
+
+- name: Check if infrastructure already exists
+  stat:
+    path: "{{ terraform_dir }}/terraform.tfstate"
+  register: tfstate_exists
+
+- name: Display infrastructure status
+  debug:
+    msg: |
+      {% if tfstate_exists.stat.exists %}
+      🏗️ Existing infrastructure detected
+      {% else %}
+      🏗️ No existing infrastructure - will provision new resources
+      {% endif %}
+
+- name: Initialize Terraform
+  command: "{{ local_bin_dir }}/terraform init"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_init
+
+- name: Validate Terraform configuration
+  command: "{{ local_bin_dir }}/terraform validate"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_validate
+
+- name: Format Terraform files
+  command: "{{ local_bin_dir }}/terraform fmt"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_fmt
+
+- name: Create Terraform plan
+  command: >
+    {{ local_bin_dir }}/terraform plan
+    -var-file="{{ config_dir }}/terraform.tfvars"
+    -out="{{ terraform_dir }}/tfplan"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_plan
+
+- name: Display infrastructure plan
+  debug:
+    msg: |
+      🏗️ Infrastructure Plan Created
+      
+      Resources to be provisioned:
+      • Oracle Autonomous Database (Always Free tier)
+      • Object Storage bucket
+      • Networking components
+      
+      💰 Cost: $0.00 (Always Free tier protection active)
+
+- name: Prompt for infrastructure approval
+  pause:
+    prompt: |
+      
+      Ready to provision Oracle Cloud infrastructure?
+      
+      This will create:
+      - Oracle Autonomous Database (1 OCPU, 20GB) - FREE
+      - Object Storage bucket (20GB limit) - FREE
+      - VCN and networking resources - FREE
+      
+      All resources are covered by Always Free tier.
+      
+      Press ENTER to continue or Ctrl+C to cancel
+
+- name: Apply Terraform plan
+  command: "{{ local_bin_dir }}/terraform apply {{ terraform_dir }}/tfplan"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_apply
+
+- name: Get infrastructure outputs
+  command: "{{ local_bin_dir }}/terraform output -json"
+  args:
+    chdir: "{{ terraform_dir }}"
+  register: terraform_outputs
+  changed_when: false
+
+- name: Parse infrastructure outputs
+  set_fact:
+    infrastructure: "{{ terraform_outputs.stdout | from_json }}"
+
+- name: Display infrastructure completion
+  debug:
+    msg: |
+      ✅ Infrastructure provisioning completed
+      
+      Database ID: {{ infrastructure.database_id.value }}
+      Database Name: {{ infrastructure.database_name.value }}
+      Service Console: {{ infrastructure.service_console_url.value }}
+      
+      💰 Monthly Cost: $0.00 (Always Free tier)
+
+- name: Cleanup Terraform plan file
+  file:
+    path: "{{ terraform_dir }}/tfplan"
+    state: absent

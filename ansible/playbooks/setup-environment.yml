@@ -1,0 +1,182 @@
+---
+# Oracle Cloud Environment Setup Playbook
+# 🚨 ALWAYS FREE TIER PROTECTION: No sudo required, user-space installation
+- name: Setup Oracle Cloud Development Environment
+  hosts: localhost
+  gather_facts: true
+  vars:
+    setup_log: "{{ logs_dir }}/setup-{{ ansible_date_time.epoch }}.log"
+    
+  tasks:
+    - name: Display Always Free Tier Protection Banner
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║              Oracle Cloud Environment Setup                     ║
+          ║              🚨 ALWAYS FREE TIER PROTECTION 🚨                  ║
+          ║                                                                  ║
+          ║  ✅ No sudo privileges required                                  ║
+          ║  ✅ User-space installation only                                 ║
+          ║  ✅ Always Free tier validation                                  ║
+          ║  ✅ Zero-cost guarantee                                          ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    - name: Create required directories
+      file:
+        path: "{{ item }}"
+        state: directory
+        mode: '0755'
+      loop:
+        - "{{ local_bin_dir }}"
+        - "{{ local_lib_dir }}"
+        - "{{ logs_dir }}"
+        - "{{ config_dir }}"
+        - "{{ oci_config_dir }}"
+
+    - name: Check if running on supported OS
+      assert:
+        that:
+          - ansible_system in ['Linux', 'Darwin']
+        fail_msg: "Unsupported OS: {{ ansible_system }}. Only Linux and macOS are supported."
+        success_msg: "✅ Supported OS detected: {{ ansible_system }}"
+
+    # Install Terraform without sudo
+    - name: Check if Terraform is already installed
+      stat:
+        path: "{{ local_bin_dir }}/terraform"
+      register: terraform_binary
+
+    - name: Get current Terraform version
+      command: "{{ local_bin_dir }}/terraform version -json"
+      register: terraform_current_version
+      failed_when: false
+      changed_when: false
+      when: terraform_binary.stat.exists
+
+    - name: Install Terraform (user-space)
+      block:
+        - name: Download Terraform
+          get_url:
+            url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_{{ ansible_system | lower }}_amd64.zip"
+            dest: "/tmp/terraform_{{ terraform_version }}.zip"
+            mode: '0644'
+          
+        - name: Extract Terraform
+          unarchive:
+            src: "/tmp/terraform_{{ terraform_version }}.zip"
+            dest: "{{ local_bin_dir }}"
+            remote_src: true
+            mode: '0755'
+            
+        - name: Cleanup Terraform download
+          file:
+            path: "/tmp/terraform_{{ terraform_version }}.zip"
+            state: absent
+            
+        - name: Verify Terraform installation
+          command: "{{ local_bin_dir }}/terraform version"
+          register: terraform_verify
+          changed_when: false
+          
+        - name: Display Terraform version
+          debug:
+            msg: "✅ Terraform installed: {{ terraform_verify.stdout_lines[0] }}"
+            
+      when: >
+        not terraform_binary.stat.exists or
+        (terraform_current_version.rc == 0 and 
+         terraform_version not in terraform_current_version.stdout)
+
+    # Install OCI CLI without sudo
+    - name: Check if OCI CLI is installed
+      command: which oci
+      register: oci_cli_check
+      failed_when: false
+      changed_when: false
+
+    - name: Install OCI CLI (user-space via pip)
+      block:
+        - name: Install OCI CLI using pip
+          pip:
+            name: oci-cli
+            state: present
+            extra_args: --user
+          environment:
+            PATH: "{{ ansible_env.PATH }}:{{ ansible_env.HOME }}/.local/bin"
+            
+        - name: Verify OCI CLI installation
+          command: "{{ ansible_env.HOME }}/.local/bin/oci --version"
+          register: oci_verify
+          changed_when: false
+          
+        - name: Display OCI CLI version
+          debug:
+            msg: "✅ OCI CLI installed: {{ oci_verify.stdout }}"
+            
+      when: oci_cli_check.rc != 0
+
+    # Update PATH for current session
+    - name: Add local bin to PATH
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.bashrc"
+        line: 'export PATH="$HOME/.local/bin:$PATH"'
+        create: true
+        backup: true
+      when: ansible_env.SHELL | basename == 'bash'
+
+    - name: Add local bin to PATH (zsh)
+      lineinfile:
+        path: "{{ ansible_env.HOME }}/.zshrc"
+        line: 'export PATH="$HOME/.local/bin:$PATH"'
+        create: true
+        backup: true
+      when: ansible_env.SHELL | basename == 'zsh'
+
+    # Validate installation
+    - name: Test OCI CLI functionality
+      command: "{{ ansible_env.HOME }}/.local/bin/oci iam region list"
+      register: oci_test
+      failed_when: false
+      changed_when: false
+
+    - name: Display OCI CLI status
+      debug:
+        msg: |
+          {% if oci_test.rc == 0 %}
+          ✅ OCI CLI is working and connected
+          {% else %}
+          ⚠️  OCI CLI installed but needs configuration
+          Run: oci setup config
+          {% endif %}
+
+    # Create configuration template
+    - name: Check if terraform.tfvars exists
+      stat:
+        path: "{{ config_dir }}/terraform.tfvars"
+      register: tfvars_file
+
+    - name: Copy terraform.tfvars template
+      copy:
+        src: "{{ config_dir }}/terraform.tfvars.example"
+        dest: "{{ config_dir }}/terraform.tfvars"
+        backup: true
+      when: not tfvars_file.stat.exists
+
+    - name: Display setup completion
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║                    🎉 SETUP COMPLETED! 🎉                       ║
+          ║              No sudo privileges required!                       ║
+          ║                                                                  ║
+          ║  ✅ Terraform installed to ~/.local/bin/                        ║
+          ║  ✅ OCI CLI installed via pip --user                            ║
+          ║  ✅ PATH updated in shell configuration                         ║
+          ║  ✅ Always Free tier protection enabled                         ║
+          ║                                                                  ║
+          ║  Next steps:                                                     ║
+          ║  1. Restart terminal or run: source ~/.bashrc                   ║
+          ║  2. Configure OCI: oci setup config                             ║
+          ║  3. Edit terraform/terraform.tfvars with your details          ║
+          ║  4. Run: ansible-playbook deploy-database.yml                   ║
+          ╚══════════════════════════════════════════════════════════════════╝

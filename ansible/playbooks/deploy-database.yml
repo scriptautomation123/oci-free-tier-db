@@ -1,0 +1,258 @@
+---
+# Oracle Cloud Database Deployment Playbook
+# 🚨 ALWAYS FREE TIER PROTECTION: Automated database creation with cost protection
+- name: Deploy Oracle Always Free Tier Database
+  hosts: localhost
+  gather_facts: true
+  vars:
+    deployment_log: "{{ logs_dir }}/database-deployment-{{ ansible_date_time.epoch }}.log"
+    terraform_plan_file: "{{ terraform_dir }}/tfplan"
+    
+  tasks:
+    - name: Display Database Deployment Banner
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║              Oracle Database Deployment                         ║
+          ║              🚨 ALWAYS FREE TIER PROTECTION 🚨                  ║
+          ║                                                                  ║
+          ║  This playbook creates an Oracle Autonomous Database using      ║
+          ║  ONLY Always Free tier resources (1 OCPU, 20GB, $0 cost).      ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    # Pre-deployment validation
+    - name: Check prerequisites
+      block:
+        - name: Verify Terraform is available
+          command: "{{ local_bin_dir }}/terraform version"
+          register: terraform_check
+          failed_when: terraform_check.rc != 0
+          changed_when: false
+          
+        - name: Verify OCI CLI is available
+          command: "{{ ansible_env.HOME }}/.local/bin/oci --version"
+          register: oci_check
+          failed_when: oci_check.rc != 0
+          changed_when: false
+          
+        - name: Check OCI configuration
+          stat:
+            path: "{{ oci_config_dir }}/config"
+          register: oci_config
+          failed_when: not oci_config.stat.exists
+          
+        - name: Verify terraform.tfvars exists
+          stat:
+            path: "{{ config_dir }}/terraform.tfvars"
+          register: tfvars
+          failed_when: not tfvars.stat.exists
+
+    # Always Free Tier validation
+    - name: Validate Always Free Tier configuration
+      block:
+        - name: Read terraform.tfvars content
+          slurp:
+            src: "{{ config_dir }}/terraform.tfvars"
+          register: tfvars_content
+          
+        - name: Parse tfvars content
+          set_fact:
+            tfvars_text: "{{ tfvars_content.content | b64decode }}"
+            
+        - name: Validate Always Free Tier settings
+          assert:
+            that:
+              - "'acknowledge_free_tier_limits = true' in tfvars_text"
+              - "'cpu_core_count = 1' in tfvars_text"
+              - "'storage_size_tbs = 0.02' in tfvars_text"
+              - "'is_free_tier = true' in tfvars_text"
+              - "'auto_scaling_enabled = false' in tfvars_text"
+            fail_msg: |
+              ❌ Always Free Tier validation failed!
+              Required settings missing in terraform.tfvars:
+              - acknowledge_free_tier_limits = true
+              - cpu_core_count = 1
+              - storage_size_tbs = 0.02
+              - is_free_tier = true
+              - auto_scaling_enabled = false
+            success_msg: "✅ Always Free Tier configuration validated"
+
+    # Check existing Always Free databases
+    - name: Check existing Always Free database usage
+      block:
+        - name: Get compartment OCID from tfvars
+          shell: |
+            grep 'compartment_ocid' "{{ config_dir }}/terraform.tfvars" | cut -d'"' -f2
+          register: compartment_ocid_result
+          changed_when: false
+          
+        - name: Set compartment OCID
+          set_fact:
+            compartment_ocid: "{{ compartment_ocid_result.stdout }}"
+          when: compartment_ocid_result.stdout != ""
+          
+        - name: Check existing Always Free databases
+          command: >
+            {{ ansible_env.HOME }}/.local/bin/oci db autonomous-database list
+            --compartment-id "{{ compartment_ocid }}"
+            --query 'data[?"is-free-tier" == `true`].{"name":"display-name", "state":"lifecycle-state"}'
+          register: existing_dbs
+          failed_when: false
+          changed_when: false
+          when: compartment_ocid is defined
+          
+        - name: Count active Always Free databases
+          set_fact:
+            free_db_count: "{{ (existing_dbs.stdout | from_json | selectattr('state', 'in', ['AVAILABLE', 'PROVISIONING', 'STARTING']) | list) | length }}"
+          when: existing_dbs.rc == 0 and existing_dbs.stdout != "[]"
+          
+        - name: Validate Always Free database limit
+          assert:
+            that:
+              - (free_db_count | default(0) | int) < 2
+            fail_msg: |
+              ❌ You already have {{ free_db_count | default(0) }} Always Free databases.
+              Always Free tier allows maximum 2 databases per tenancy.
+              Please terminate one database before creating a new one.
+            success_msg: "✅ You can create {{ 2 - (free_db_count | default(0) | int) }} more Always Free database(s)"
+
+    # Terraform operations
+    - name: Initialize and plan Terraform deployment
+      block:
+        - name: Initialize Terraform
+          command: "{{ local_bin_dir }}/terraform init"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: terraform_init
+          
+        - name: Validate Terraform configuration
+          command: "{{ local_bin_dir }}/terraform validate"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: terraform_validate
+          
+        - name: Format Terraform files
+          command: "{{ local_bin_dir }}/terraform fmt"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: terraform_fmt
+          
+        - name: Create Terraform plan
+          command: >
+            {{ local_bin_dir }}/terraform plan
+            -var-file="{{ config_dir }}/terraform.tfvars"
+            -out="{{ terraform_plan_file }}"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: terraform_plan
+
+    # Display plan and get approval
+    - name: Display deployment plan
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║                     DEPLOYMENT PLAN                             ║
+          ║              🚨 ALWAYS FREE TIER RESOURCES 🚨                   ║
+          ║                                                                  ║
+          ║  • 1x Autonomous Database (1 OCPU, 20GB) - FREE                 ║
+          ║  • 1x Object Storage Bucket (20GB limit) - FREE                 ║
+          ║  • VCN and networking resources - FREE                          ║
+          ║                                                                  ║
+          ║  💰 COST: $0.00 (Always Free Tier)                              ║
+          ║  ⏰ TIME LIMIT: None                                             ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    - name: Prompt for deployment approval
+      pause:
+        prompt: |
+          
+          Ready to deploy Always Free Oracle Database?
+          This will create:
+          - Oracle Autonomous Database (Always Free tier)
+          - Object Storage bucket  
+          - VCN and networking resources
+          
+          All resources are FREE and will never expire.
+          
+          Press ENTER to continue or Ctrl+C to cancel
+
+    # Apply Terraform plan
+    - name: Apply Terraform deployment
+      command: "{{ local_bin_dir }}/terraform apply {{ terraform_plan_file }}"
+      args:
+        chdir: "{{ terraform_dir }}"
+      register: terraform_apply
+
+    # Get deployment outputs
+    - name: Get database information
+      block:
+        - name: Get database name
+          command: "{{ local_bin_dir }}/terraform output -raw database_name"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: db_name
+          
+        - name: Get database ID
+          command: "{{ local_bin_dir }}/terraform output -raw database_id"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: db_id
+          
+        - name: Get admin password
+          command: "{{ local_bin_dir }}/terraform output -raw admin_password"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: admin_password
+          
+        - name: Get service console URL
+          command: "{{ local_bin_dir }}/terraform output -raw service_console_url"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: service_console
+          
+        - name: Get connection strings
+          command: "{{ local_bin_dir }}/terraform output -json connection_strings"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: connection_strings
+
+    # Save connection details
+    - name: Create connection details file
+      template:
+        src: connection-details.txt.j2
+        dest: "{{ ansible_dir }}/../connection-details.txt"
+        backup: true
+      vars:
+        database_name: "{{ db_name.stdout }}"
+        database_id: "{{ db_id.stdout }}"
+        admin_password: "{{ admin_password.stdout }}"
+        service_console_url: "{{ service_console.stdout }}"
+        connection_info: "{{ connection_strings.stdout | from_json }}"
+        deployment_time: "{{ ansible_date_time.iso8601 }}"
+
+    # Display success message
+    - name: Display deployment completion
+      debug:
+        msg: |
+          ╔══════════════════════════════════════════════════════════════════╗
+          ║               🎉 DATABASE DEPLOYED SUCCESSFULLY! 🎉             ║
+          ║                     (Always Free Tier)                          ║
+          ║                                                                  ║
+          ║  Database Name: {{ db_name.stdout }}
+          ║  Database ID: {{ db_id.stdout }}
+          ║  Admin Username: ADMIN
+          ║  Service Console: {{ service_console.stdout }}
+          ║                                                                  ║
+          ║  💰 Cost: $0.00 (Always Free tier - no charges ever)            ║
+          ║  ⏰ Time Limit: None (permanent free tier)                       ║
+          ║                                                                  ║
+          ║  Next Steps:                                                     ║
+          ║  1. Run: ansible-playbook install-packages.yml                  ║
+          ║  2. Or connect manually using connection details                ║
+          ╚══════════════════════════════════════════════════════════════════╝
+
+    # Cleanup
+    - name: Cleanup Terraform plan file
+      file:
+        path: "{{ terraform_plan_file }}"
+        state: absent

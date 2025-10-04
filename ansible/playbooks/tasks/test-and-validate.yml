@@ -1,0 +1,292 @@
+---
+# Test and Validation Tasks
+# Comprehensive testing framework for Oracle package deployment
+
+- name: Test Phase - Validate deployment and run tests
+  block:
+    - name: Create test output directory
+      file:
+        path: "{{ workspace_path }}/test_results"
+        state: directory
+        mode: '0755'
+
+    - name: Generate validation SQL script
+      template:
+        src: validate-packages.sql.j2
+        dest: "{{ workspace_path }}/test_results/validation_report.sql"
+        mode: '0755'
+      vars:
+        expected_packages:
+          - name: partition_utils_pkg
+            has_body: true
+          - name: partition_strategy_pkg  
+            has_body: true
+          - name: partition_management_pkg
+            has_body: true
+          - name: partition_maintenance_pkg
+            has_body: true
+          - name: partition_logger_pkg
+            has_body: true
+          - name: create_table_pkg
+            has_body: true
+          - name: online_table_operations_pkg
+            has_body: true
+        required_tables:
+          - partition_strategy_config
+          - partition_maintenance_jobs
+          - partition_operation_log
+          - operation_log
+        validation_tests:
+          - name: "Test Utility Function"
+            type: "function" 
+            call: "partition_utils_pkg.get_version"
+            return_type: "VARCHAR2"
+            description: "Verify package version function"
+          - name: "Test Logger"
+            type: "procedure"
+            call: "partition_logger_pkg.log_info('Test message')"
+            description: "Verify logging functionality"
+          - name: "Test Strategy Evaluation"
+            type: "function"
+            call: "partition_strategy_pkg.evaluate_strategy('TEST_TABLE', SYSDATE)"
+            return_type: "VARCHAR2"
+            description: "Test partition strategy evaluation"
+          - name: "Test Create Table Package"
+            type: "function"
+            call: "create_table_pkg.validate_table_definition('TEST_TABLE')"
+            return_type: "VARCHAR2"
+            description: "Test table creation validation"
+
+    - name: Test database connection
+      shell: |
+        echo "SELECT 'CONNECTION_SUCCESS' FROM dual;" | sqlplus -s {{ database_username }}@{{ database_service_name }}
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: connection_test
+      failed_when: "'CONNECTION_SUCCESS' not in connection_test.stdout"
+
+    - name: Run comprehensive validation tests
+      shell: |
+        cd {{ workspace_path }}/test_results
+        sqlplus {{ database_username }}@{{ database_service_name }} @validation_report.sql > validation_output.log 2>&1
+        echo $?
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: validation_results
+      
+    - name: Check validation results
+      slurp:
+        src: "{{ workspace_path }}/test_results/validation_output.log"
+      register: validation_log
+      
+    - name: Parse validation results
+      set_fact:
+        validation_success: "{{ 'ALL PACKAGES VALIDATED SUCCESSFULLY' in (validation_log.content | b64decode) }}"
+        validation_log_content: "{{ validation_log.content | b64decode }}"
+
+    - name: Generate performance benchmarks
+      template:
+        src: benchmark-performance.sh.j2
+        dest: "{{ workspace_path }}/test_results/benchmark.sh"
+        mode: '0755'
+      vars:
+        benchmark_iterations: 25
+        benchmark_output_dir: "{{ workspace_path }}/test_results"
+        performance_benchmarks:
+          - name: "Partition Strategy Performance"
+            sql: "SELECT partition_strategy_pkg.evaluate_strategy('TEST_TABLE', SYSDATE) FROM dual;"
+            description: "Test partition strategy evaluation performance"
+          - name: "Logger Performance"  
+            sql: "BEGIN partition_logger_pkg.log_info('Performance test message'); END;"
+            description: "Test logging system performance"
+          - name: "Utility Package Performance"
+            sql: "SELECT partition_utils_pkg.get_version FROM dual;"
+            description: "Test utility package function performance"
+          - name: "Table Operations Performance"
+            sql: "SELECT online_table_operations_pkg.check_table_exists('DUAL') FROM dual;"
+            description: "Test table operations performance"
+
+    - name: Run performance benchmarks
+      shell: "{{ workspace_path }}/test_results/benchmark.sh"
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: benchmark_results
+      ignore_errors: true
+      
+    - name: Generate test data (if enabled)
+      block:
+        - name: Create test data generation script
+          copy:
+            content: |
+              -- Test Data Generation Script
+              SET SERVEROUTPUT ON
+              
+              -- Insert test partition strategies
+              BEGIN
+                INSERT INTO partition_strategy_config 
+                (strategy_name, table_pattern, partition_type, partition_interval)
+                VALUES ('DAILY_STRATEGY', 'LOG_%', 'RANGE', 'DAILY');
+                
+                INSERT INTO partition_strategy_config 
+                (strategy_name, table_pattern, partition_type, partition_interval)
+                VALUES ('MONTHLY_STRATEGY', 'HIST_%', 'RANGE', 'MONTHLY');
+                
+                COMMIT;
+                
+                DBMS_OUTPUT.PUT_LINE('Test data created successfully');
+              EXCEPTION
+                WHEN DUP_VAL_ON_INDEX THEN
+                  DBMS_OUTPUT.PUT_LINE('Test data already exists');
+                WHEN OTHERS THEN
+                  DBMS_OUTPUT.PUT_LINE('Error creating test data: ' || SQLERRM);
+                  ROLLBACK;
+              END;
+              /
+              EXIT;
+            dest: "{{ workspace_path }}/test_results/create_test_data.sql"
+            mode: '0644'
+            
+        - name: Load test data
+          shell: |
+            sqlplus {{ database_username }}@{{ database_service_name }} @create_test_data.sql
+          args:
+            chdir: "{{ workspace_path }}/test_results"
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: test_data_results
+          
+      when: load_test_data | default(false)
+
+    - name: Generate comprehensive test report
+      template:
+        src: test-report.md.j2
+        dest: "{{ workspace_path }}/test_results/TEST_REPORT.md"
+        mode: '0644'
+      vars:
+        test_timestamp: "{{ ansible_date_time.iso8601 }}"
+        validation_status: "{{ 'PASSED' if validation_success else 'FAILED' }}"
+        benchmark_status: "{{ 'COMPLETED' if benchmark_results.rc == 0 else 'FAILED' }}"
+        connection_status: "PASSED"
+
+    - name: Display test summary
+      debug:
+        msg: |
+          ====================================================================
+          TEST EXECUTION SUMMARY
+          ====================================================================
+          🔗 Connection Test: PASSED
+          {% if validation_success %}
+          ✅ Package Validation: PASSED
+          {% else %}
+          ❌ Package Validation: FAILED
+          {% endif %}
+          {% if benchmark_results.rc == 0 %}
+          📊 Performance Benchmarks: COMPLETED
+          {% else %}
+          ⚠️ Performance Benchmarks: FAILED
+          {% endif %}
+          📄 Full Report: {{ workspace_path }}/test_results/TEST_REPORT.md
+          ====================================================================
+
+    - name: Validate Always Free tier compliance
+      block:
+        - name: Check database resources
+          shell: |
+            echo "
+            SELECT 
+              'CPU_COUNT: ' || value as metric FROM v\$parameter WHERE name = 'cpu_count'
+            UNION ALL
+            SELECT 
+              'DB_SIZE_GB: ' || ROUND(SUM(bytes)/1024/1024/1024,2) FROM dba_data_files
+            UNION ALL
+            SELECT 
+              'SESSION_COUNT: ' || COUNT(*) FROM v\$session WHERE type = 'USER';
+            " | sqlplus -s {{ database_username }}@{{ database_service_name }}
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: resource_check
+          
+        - name: Verify Always Free compliance
+          assert:
+            that:
+              - "'CPU_COUNT: 1' in resource_check.stdout or 'CPU_COUNT: 2' in resource_check.stdout"
+            fail_msg: "❌ Always Free tier compliance check failed - CPU count exceeds limit"
+            success_msg: "✅ Always Free tier compliance verified"
+
+  rescue:
+    - name: Handle test failures gracefully
+      block:
+        - name: Log test failure details
+          debug:
+            msg: |
+              ❌ Test phase encountered failures:
+              - Validation Success: {{ validation_success | default('UNKNOWN') }}
+              - Benchmark Status: {{ benchmark_results.rc | default('UNKNOWN') }}
+              - Connection Status: {{ connection_test.rc | default('UNKNOWN') }}
+              
+        - name: Create failure report
+          copy:
+            content: |
+              # Test Execution Failure Report
+              
+              **Timestamp:** {{ ansible_date_time.iso8601 }}
+              **Environment:** {{ deployment_environment }}
+              
+              ## Failure Summary
+              
+              The test and validation phase encountered failures. The deployment may still be functional,
+              but manual verification is recommended.
+              
+              ### Connection Test
+              Status: {{ connection_test.rc | default('UNKNOWN') }}
+              
+              ### Validation Results  
+              Status: {{ validation_success | default('UNKNOWN') }}
+              
+              ### Benchmark Results
+              Status: {{ benchmark_results.rc | default('UNKNOWN') }}
+              
+              ## Troubleshooting Steps
+              
+              1. Verify database connectivity manually
+              2. Check package compilation status
+              3. Review validation logs in test_results directory
+              4. Ensure all required tables exist
+              
+              ## Manual Validation Commands
+              
+              ```sql
+              -- Check package status
+              SELECT object_name, object_type, status 
+              FROM user_objects 
+              WHERE object_type IN ('PACKAGE', 'PACKAGE BODY')
+              ORDER BY object_name;
+              
+              -- Check for compilation errors
+              SELECT name, type, line, position, text 
+              FROM user_errors 
+              ORDER BY name, type, line;
+              ```
+            dest: "{{ workspace_path }}/test_results/FAILURE_REPORT.md"
+            mode: '0644'
+            
+        - name: Set test failure flag
+          set_fact:
+            test_phase_failed: true
+            
+        - name: Continue with warning
+          debug:
+            msg: "⚠️ Tests failed but deployment continues. Check FAILURE_REPORT.md for details."
+
+  always:
+    - name: Archive test results
+      archive:
+        path: "{{ workspace_path }}/test_results/"
+        dest: "{{ workspace_path }}/test_results_{{ ansible_date_time.epoch }}.tar.gz"
+        remove: false
+      ignore_errors: true

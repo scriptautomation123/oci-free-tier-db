@@ -1,0 +1,89 @@
+# ==============================================================================
+# ALWAYS FREE TIER CONFIGURATION (RECOMMENDED)
+# ==============================================================================
+
+# IMPORTANT: This configuration is optimized for Oracle Always Free tier
+# to prevent any charges. Only modify if you understand the cost implications.
+
+# Acknowledge that you understand Always Free tier limitations
+acknowledge_free_tier_limits = true
+
+# ==============================================================================
+# REQUIRED: OCI Configuration
+# ==============================================================================
+
+# Your OCI compartment OCID where resources will be created
+compartment_ocid = "ocid1.compartment.oc1..aaaaaaaa5erdnj52lkeiq3k766rrrb4ywv4qxhakw4htg7y7pqpokqsb63sa"
+
+# OCI region for deployment
+region = "us-ashburn-1"
+
+# ==============================================================================
+# DATABASE CONFIGURATION (ALWAYS FREE OPTIMIZED)
+# ==============================================================================
+
+# Database name (1-8 characters, start with letter)
+db_name = "PARTTEST"
+
+# Oracle Database version
+db_version = "19c"
+
+# Admin password (leave empty for auto-generation)
+# Must be 12-30 chars with uppercase, lowercase, number, and special char (#, _)
+admin_password = ""
+
+# ==============================================================================
+# ALWAYS FREE TIER LIMITS (DO NOT CHANGE UNLESS YOU WANT CHARGES)
+# ==============================================================================
+
+# CPU cores - Always Free allows exactly 1 OCPU
+cpu_core_count = 1
+
+# Storage - Always Free allows up to 20GB (0.02 TB)
+storage_size_tbs = 0.02
+
+# Auto-scaling MUST be disabled for Always Free tier
+auto_scaling_enabled = false
+
+# Use Always Free tier (STRONGLY RECOMMENDED)
+is_free_tier = true
+
+# License model (Always Free uses LICENSE_INCLUDED)
+license_model = "LICENSE_INCLUDED"
+
+# ==============================================================================
+# SECURITY AND BACKUP
+# ==============================================================================
+
+# Backup retention period (1-60 days)
+backup_retention_days = 7
+
+# IP addresses allowed to connect (empty list = allow all)
+# Example: ["203.0.113.0/24", "198.51.100.1/32"]
+whitelisted_ips = []
+
+# ==============================================================================
+# ENVIRONMENT AND TAGGING
+# ==============================================================================
+
+# Environment name for resource tagging
+environment_name = "partition-test"
+
+# ==============================================================================
+# OPTIONAL FEATURES
+# ==============================================================================
+
+# Create Object Storage bucket for backups/exports
+create_storage_bucket = true
+
+# Testing configuration
+load_test_data = true
+run_validation_tests = true
+test_data_size = "medium"  # small, medium, large
+
+# ==============================================================================
+# ADVANCED CONFIGURATION (Uncomment to customize)
+# ==============================================================================
+
+# Wallet password (if different from admin password)
+# wallet_password = ""

@@ -1,0 +1,71 @@
+---
+# Database Configuration Tasks
+# Handles database wallet, connection setup, and initial configuration
+
+- name: Create wallet directory
+  file:
+    path: "{{ wallet_dir }}"
+    state: directory
+    mode: '0700'
+
+- name: Download database wallet
+  command: >
+    {{ ansible_env.HOME }}/.local/bin/oci db autonomous-database generate-wallet
+    --autonomous-database-id "{{ infrastructure.database_id.value }}"
+    --password "{{ wallet_password | default('WalletPassword123#') }}"
+    --file "{{ wallet_dir }}/wallet.zip"
+  register: wallet_download
+
+- name: Extract database wallet
+  unarchive:
+    src: "{{ wallet_dir }}/wallet.zip"
+    dest: "{{ wallet_dir }}"
+    remote_src: true
+
+- name: Set wallet permissions
+  file:
+    path: "{{ wallet_dir }}"
+    mode: '0700'
+    recurse: true
+
+- name: Test database connectivity
+  shell: |
+    export TNS_ADMIN="{{ wallet_dir }}"
+    echo "SELECT 'Connection successful' FROM dual;" | \
+    echo "{{ infrastructure.admin_username.value }}/{{ infrastructure.admin_password.value }}@{{ infrastructure.database_name.value }}_HIGH" | \
+    sqlplus -s /nolog
+  environment:
+    TNS_ADMIN: "{{ wallet_dir }}"
+  register: connectivity_test
+  failed_when: "'Connection successful' not in connectivity_test.stdout"
+
+- name: Create connection details file
+  template:
+    src: connection-details.txt.j2
+    dest: "{{ ansible_dir }}/../connection-details.txt"
+    backup: true
+  vars:
+    database_info: "{{ infrastructure }}"
+    deployment_time: "{{ ansible_date_time.iso8601 }}"
+
+- name: Create database connection script
+  template:
+    src: connect-db.sh.j2
+    dest: "{{ ansible_dir }}/../connect-db.sh"
+    mode: '0755'
+  vars:
+    database_name: "{{ infrastructure.database_name.value }}"
+    admin_username: "{{ infrastructure.admin_username.value }}"
+    admin_password: "{{ infrastructure.admin_password.value }}"
+    wallet_dir: "{{ wallet_dir }}"
+
+- name: Display database configuration completion
+  debug:
+    msg: |
+      ✅ Database configuration completed
+      
+      Connection test: PASSED
+      Wallet location: {{ wallet_dir }}
+      Connection script: ../connect-db.sh
+      
+      Quick connect: ./connect-db.sh
