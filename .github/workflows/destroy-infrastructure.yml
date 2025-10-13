@@ -1,0 +1,76 @@
+# =============================================================================
+# Oracle Cloud Infrastructure Destruction - Separate Secure Workflow
+# =============================================================================
+# Description: Always Free tier resource cleanup
+# Security: No user inputs, manual approval required
+# =============================================================================
+
+name: Destroy OCI Infrastructure
+
+on:
+    # Manual trigger only - NO USER INPUTS
+    workflow_dispatch:
+
+# Prevent concurrent executions
+concurrency:
+    group: terraform-destroy-${{ github.ref }}
+    cancel-in-progress: false
+
+env:
+    TERRAFORM_VERSION: "1.5.0"
+    TERRAFORM_DIR: "./terraform"
+
+jobs:
+    terraform-destroy:
+        name: Terraform Destroy
+        runs-on: ubuntu-latest
+
+        # Only run on main branch
+        if: github.ref == 'refs/heads/main'
+
+        # Require manual approval via GitHub environment
+        environment:
+            name: production
+            url: https://cloud.oracle.com
+
+        permissions:
+            contents: read
+
+        steps:
+            - name: Checkout code
+              uses: actions/checkout@v4
+
+            - name: Setup Terraform
+              uses: hashicorp/setup-terraform@v3
+              with:
+                  terraform_version: ${{ env.TERRAFORM_VERSION }}
+
+            - name: Terraform Init
+              run: terraform init
+              working-directory: ${{ env.TERRAFORM_DIR }}
+
+            - name: Always Free Tier Destruction Confirmation
+              run: |
+                  echo "DESTROYING ALWAYS FREE TIER INFRASTRUCTURE..."
+                  echo "This will remove:"
+                  echo "- Oracle Autonomous Database (1 OCPU, 20GB)"
+                  echo "- Object Storage Bucket" 
+                  echo "- VCN and networking resources"
+                  echo "Cost impact: Resources removed, no future charges"
+
+            - name: Terraform Destroy
+              run: |
+                  terraform destroy \
+                    -var-file=terraform.tfvars.example \
+                    -auto-approve
+              working-directory: ${{ env.TERRAFORM_DIR }}
+              env:
+                  TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
+                  TF_VAR_admin_password: ${{ secrets.DB_ADMIN_PASSWORD }}
+
+            - name: Destruction Summary
+              run: |
+                  echo "## Always Free Tier Infrastructure Destruction Complete" >> $GITHUB_STEP_SUMMARY
+                  echo "" >> $GITHUB_STEP_SUMMARY
+                  echo "**Status:** Successfully destroyed" >> $GITHUB_STEP_SUMMARY
+                  echo "**Cost Impact:** All Always Free tier resources removed" >> $GITHUB_STEP_SUMMARY

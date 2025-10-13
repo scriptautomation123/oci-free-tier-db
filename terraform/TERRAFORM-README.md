@@ -30,6 +30,40 @@ Oracle Cloud Always Free tier provides:
 
 ## Quick Start
 
+### Option 1: GitHub Actions (Recommended for Teams)
+
+For automated infrastructure provisioning via CI/CD:
+
+```bash
+# See the comprehensive guide:
+../.github/GITHUB_ACTIONS_GUIDE.md
+
+# Quick steps:
+# 1. Configure GitHub Secrets in repository settings
+# 2. Navigate to Actions tab
+# 3. Select "Provision OCI Infrastructure" workflow
+# 4. Click "Run workflow" → Select "apply"
+# 5. Approve deployment in environment gate
+```
+
+**Why this approach?**
+- ✅ Industry best practice for Terraform in CI/CD
+- ✅ Built-in approval gates and audit trails
+- ✅ Team collaboration via PR reviews
+- ✅ Direct Terraform execution (no wrapper overhead)
+
+### Option 2: Local Development with Ansible
+
+For interactive local development:
+
+```bash
+# Ansible orchestrates Terraform with additional validation
+cd ../ansible
+ansible-playbook playbooks/deploy-database.yml
+```
+
+### Option 3: Direct Terraform (Development/Debugging Only)
+
 1. **Navigate to the terraform directory**:
 
    ```bash

@@ -4,6 +4,17 @@
 
 This Ansible configuration provides comprehensive orchestration for Oracle Cloud deployment, including infrastructure provisioning via Terraform integration.
 
+## 📋 When to Use Ansible vs GitHub Actions
+
+This project supports **two complementary approaches** for infrastructure provisioning:
+
+| Approach                     | Best For                                                       | Terraform Execution           |
+| ---------------------------- | -------------------------------------------------------------- | ----------------------------- |
+| **GitHub Actions**           | CI/CD pipelines, team collaboration, production deployments    | ✅ Direct (industry standard) |
+| **Ansible (this directory)** | Local development, interactive workflows, custom orchestration | Via Ansible wrapper           |
+
+📖 **See**: [`../.github/GITHUB_ACTIONS_GUIDE.md`](../.github/GITHUB_ACTIONS_GUIDE.md) for detailed comparison and when to use each approach.
+
 ## 🚨 ALWAYS FREE TIER PROTECTION 🚨
 
 This Ansible-based automation provides **zero-cost** Oracle Cloud deployment with **no sudo privileges required**.
