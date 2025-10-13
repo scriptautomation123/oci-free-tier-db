@@ -51,3 +51,5 @@ id_dsa
 .cache/
 .specstory
 .specstory/history
+.specstory/.what-is-this.md
+.specstory/.what-is-this.md
