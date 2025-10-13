@@ -4,6 +4,8 @@
 
 This guide explains how to use GitHub Actions for automated infrastructure provisioning with Oracle Cloud Infrastructure (OCI) using Terraform.
 
+> 🚀 **New to GitHub Actions?** See [QUICK_START.md](QUICK_START.md) for a 5-minute setup guide!
+
 ## 🎯 Best Practice Approach: Direct Terraform Execution
 
 ### Why Direct Terraform in GitHub Actions?

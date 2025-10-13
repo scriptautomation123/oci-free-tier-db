@@ -202,14 +202,15 @@ This single command will:
 For automated infrastructure provisioning via GitHub Actions:
 
 ```bash
-# See comprehensive guide:
-.github/GITHUB_ACTIONS_GUIDE.md
+# 🚀 Quick start (5 minutes):
+# See: .github/QUICK_START.md
 
 # Quick setup:
 # 1. Configure GitHub Secrets (OCI_COMPARTMENT_OCID, DB_ADMIN_PASSWORD)
-# 2. Go to Actions tab → "Provision OCI Infrastructure"
-# 3. Click "Run workflow" → Select "apply"
-# 4. Approve deployment
+# 2. Create environments (production, destroy) with approval rules
+# 3. Go to Actions tab → "Provision OCI Infrastructure"
+# 4. Click "Run workflow" → Select action (plan/apply/destroy)
+# 5. Approve deployment (for apply/destroy actions)
 ```
 
 **Key Benefits:**
@@ -219,7 +220,9 @@ For automated infrastructure provisioning via GitHub Actions:
 - ✅ Audit trail and deployment history
 - ✅ Team collaboration with PR reviews
 
-📖 **Full documentation**: [`.github/GITHUB_ACTIONS_GUIDE.md`](.github/GITHUB_ACTIONS_GUIDE.md)
+📖 **Documentation**:
+- 🚀 Quick Start: [`.github/QUICK_START.md`](.github/QUICK_START.md) - 5-minute guide
+- 📖 Full Guide: [`.github/GITHUB_ACTIONS_GUIDE.md`](.github/GITHUB_ACTIONS_GUIDE.md) - Complete reference
 
 ### Option 2: Local Automation with Ansible (Interactive Development)
 
