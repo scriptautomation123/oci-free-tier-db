@@ -1,0 +1,88 @@
+---
+# YAML Lint Configuration
+# Works with ansible-lint for comprehensive YAML validation
+# Documentation: https://yamllint.readthedocs.io/
+
+extends: default
+
+rules:
+  # Line length - allow up to 160 characters for readability
+  line-length:
+    max: 160
+    level: warning
+
+  # Indentation - standard 2-space indentation
+  indentation:
+    spaces: 2
+    indent-sequences: true
+    check-multi-line-strings: false
+
+  # Truthy values - enforce true/false (not yes/no)
+  truthy:
+    allowed-values: ["true", "false"]
+    check-keys: true
+    level: error
+
+  # Comments formatting
+  comments:
+    min-spaces-from-content: 1
+    require-starting-space: true
+    ignore-shebangs: true
+
+  # Braces formatting
+  braces:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+    forbid: false
+
+  # Brackets formatting
+  brackets:
+    max-spaces-inside: 1
+    min-spaces-inside: 0
+
+  # Empty lines
+  empty-lines:
+    max: 2
+    max-start: 0
+    max-end: 0
+
+  # Trailing spaces
+  trailing-spaces: enable
+
+  # Key duplicates
+  key-duplicates: enable
+
+  # Document markers
+  document-start:
+    present: true
+    level: warning
+
+  document-end: disable
+
+  # New line at end of file
+  new-line-at-end-of-file: enable
+
+  # Comments indentation - allow flexible comment placement
+  comments-indentation: disable
+
+  # Hyphens
+  hyphens:
+    max-spaces-after: 1
+
+  # Colons
+  colons:
+    max-spaces-before: 0
+    max-spaces-after: 1
+
+  # Empty values
+  empty-values:
+    forbid-in-block-mappings: false
+    forbid-in-flow-mappings: true
+
+# Ignore certain files
+ignore: |
+  .cache/
+  .github/
+  .ansible/
+  node_modules/
+  *.md

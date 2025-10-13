@@ -3,102 +3,128 @@
 # This task file handles Terraform operations for infrastructure provisioning
 
 - name: Check if infrastructure already exists
-  stat:
+  ansible.builtin.stat:
     path: "{{ terraform_dir }}/terraform.tfstate"
   register: tfstate_exists
 
 - name: Display infrastructure status
-  debug:
+  ansible.builtin.debug:
     msg: |
       {% if tfstate_exists.stat.exists %}
-      🏗️ Existing infrastructure detected
+      [BUILD] Existing infrastructure detected
       {% else %}
-      🏗️ No existing infrastructure - will provision new resources
+      [BUILD] No existing infrastructure - will provision new resources
       {% endif %}
 
 - name: Initialize Terraform
-  command: "{{ local_bin_dir }}/terraform init"
+  ansible.builtin.command: "{{ local_bin_dir }}/terraform init"
   args:
     chdir: "{{ terraform_dir }}"
   register: terraform_init
+  changed_when: "'Terraform has been successfully initialized' in terraform_init.stdout"
 
 - name: Validate Terraform configuration
-  command: "{{ local_bin_dir }}/terraform validate"
+  ansible.builtin.command: "{{ local_bin_dir }}/terraform validate"
   args:
     chdir: "{{ terraform_dir }}"
   register: terraform_validate
+  changed_when: false # Validation is read-only
 
 - name: Format Terraform files
-  command: "{{ local_bin_dir }}/terraform fmt"
+  ansible.builtin.command: "{{ local_bin_dir }}/terraform fmt"
   args:
     chdir: "{{ terraform_dir }}"
   register: terraform_fmt
+  changed_when: terraform_fmt.stdout != ""
+  failed_when: false # Non-critical operation
 
 - name: Create Terraform plan
-  command: >
+  ansible.builtin.command: >
     {{ local_bin_dir }}/terraform plan
     -var-file="{{ config_dir }}/terraform.tfvars"
     -out="{{ terraform_dir }}/tfplan"
   args:
     chdir: "{{ terraform_dir }}"
   register: terraform_plan
+  changed_when: false # Planning doesn't change infrastructure
 
 - name: Display infrastructure plan
-  debug:
+  ansible.builtin.debug:
     msg: |
-      🏗️ Infrastructure Plan Created
-      
+      [BUILD] Infrastructure Plan Created
+
       Resources to be provisioned:
       • Oracle Autonomous Database (Always Free tier)
       • Object Storage bucket
       • Networking components
-      
-      💰 Cost: $0.00 (Always Free tier protection active)
+
+      [COST] Cost: $0.00 (Always Free tier protection active)
 
 - name: Prompt for infrastructure approval
-  pause:
-    prompt: |
-      
+  ansible.builtin.pause:
+    prompt: |2
+
       Ready to provision Oracle Cloud infrastructure?
-      
+
       This will create:
       - Oracle Autonomous Database (1 OCPU, 20GB) - FREE
       - Object Storage bucket (20GB limit) - FREE
       - VCN and networking resources - FREE
-      
+
       All resources are covered by Always Free tier.
-      
+
       Press ENTER to continue or Ctrl+C to cancel
 
 - name: Apply Terraform plan
-  command: "{{ local_bin_dir }}/terraform apply {{ terraform_dir }}/tfplan"
+  ansible.builtin.command: "{{ local_bin_dir }}/terraform apply {{ terraform_dir }}/tfplan"
   args:
     chdir: "{{ terraform_dir }}"
   register: terraform_apply
+  changed_when: "terraform_apply.rc == 0 and 'Apply complete!' in terraform_apply.stdout\nterraform plan"
 
 - name: Get infrastructure outputs
-  command: "{{ local_bin_dir }}/terraform output -json"
-  args:
-    chdir: "{{ terraform_dir }}"
-  register: terraform_outputs
-  changed_when: false
+  block:
+    - name: Retrieve Terraform outputs
+      ansible.builtin.command: "{{ local_bin_dir }}/terraform output -json"
+      args:
+        chdir: "{{ terraform_dir }}"
+      register: terraform_outputs
+      changed_when: false
+  rescue:
+    - name: Output retrieval failed
+      ansible.builtin.debug:
+        msg: |
+          [WARNING] Failed to retrieve Terraform outputs!
+          Infrastructure was created but outputs are not available.
+
+          You can manually get outputs with:
+          cd {{ terraform_dir }} && terraform output
+
+    - name: Set empty infrastructure fact for graceful degradation
+      ansible.builtin.set_fact:
+        infrastructure: {}
+
+    - name: Continue without outputs
+      ansible.builtin.debug:
+        msg: "Continuing deployment without Terraform outputs - manual configuration may be required"
 
 - name: Parse infrastructure outputs
-  set_fact:
+  ansible.builtin.set_fact:
     infrastructure: "{{ terraform_outputs.stdout | from_json }}"
+  when: terraform_outputs.stdout is defined and terraform_outputs.stdout != ""
 
 - name: Display infrastructure completion
-  debug:
+  ansible.builtin.debug:
     msg: |
-      ✅ Infrastructure provisioning completed
-      
+      [OK] Infrastructure provisioning completed
+
       Database ID: {{ infrastructure.database_id.value }}
       Database Name: {{ infrastructure.database_name.value }}
       Service Console: {{ infrastructure.service_console_url.value }}
-      
-      💰 Monthly Cost: $0.00 (Always Free tier)
+
+      [COST] Monthly Cost: $0.00 (Always Free tier)
 
 - name: Cleanup Terraform plan file
-  file:
+  ansible.builtin.file:
     path: "{{ terraform_dir }}/tfplan"
     state: absent

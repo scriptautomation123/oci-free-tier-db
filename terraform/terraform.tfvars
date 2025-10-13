@@ -77,9 +77,9 @@ environment_name = "partition-test"
 create_storage_bucket = true
 
 # Testing configuration
-load_test_data = true
+load_test_data       = true
 run_validation_tests = true
-test_data_size = "medium"  # small, medium, large
+test_data_size       = "medium" # small, medium, large
 
 # ==============================================================================
 # ADVANCED CONFIGURATION (Uncomment to customize)

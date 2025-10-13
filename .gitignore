@@ -1,0 +1,53 @@
+# Terraform
+*.tfstate
+*.tfstate.*
+*.tfstate.backup
+.terraform/
+.terraform.lock.hcl
+terraform.tfvars
+*.auto.tfvars
+
+# Ansible
+*.retry
+.vault_pass
+
+# Logs
+*.log
+validation.log
+
+# OS
+.DS_Store
+Thumbs.db
+
+# IDE
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+env/
+venv/
+.env
+
+# Keys and certificates
+*.pem
+*.key
+*.p12
+*.pfx
+id_rsa
+id_dsa
+*.crt
+*.cer
+
+# Temporary files
+*.tmp
+*.temp
+.cache/
+.specstory
+.specstory/history

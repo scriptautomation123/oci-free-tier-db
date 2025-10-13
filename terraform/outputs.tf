@@ -1,5 +1,11 @@
 # Outputs for Oracle Partition Management Suite Infrastructure
 
+# Free Tier Validation Information
+output "free_tier_warnings" {
+  description = "Free tier configuration warnings and validation messages"
+  value       = local.free_tier_warnings
+}
+
 # Database Connection Information
 output "database_id" {
   description = "The OCID of the Autonomous Database"
@@ -21,9 +27,9 @@ output "connection_urls" {
   description = "Database connection URLs"
   value = {
     sql_developer_web = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].sql_dev_web_url, "")
-    apex_url         = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].apex_url, "")
-    machine_learning = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].machine_learning_user_management_url, "")
-    ords_url         = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].ords_url, "")
+    apex_url          = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].apex_url, "")
+    machine_learning  = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].machine_learning_user_management_url, "")
+    ords_url          = try(oci_database_autonomous_database.partition_test_db.connection_urls[0].ords_url, "")
   }
 }
 
@@ -72,11 +78,11 @@ output "wallet_content" {
 output "database_config" {
   description = "Database configuration details"
   value = {
-    cpu_core_count          = oci_database_autonomous_database.partition_test_db.cpu_core_count
+    cpu_core_count           = oci_database_autonomous_database.partition_test_db.cpu_core_count
     data_storage_size_in_tbs = oci_database_autonomous_database.partition_test_db.data_storage_size_in_tbs
     auto_scaling_enabled     = oci_database_autonomous_database.partition_test_db.is_auto_scaling_enabled
-    is_free_tier            = oci_database_autonomous_database.partition_test_db.is_free_tier
-    license_model           = oci_database_autonomous_database.partition_test_db.license_model
+    is_free_tier             = oci_database_autonomous_database.partition_test_db.is_free_tier
+    license_model            = oci_database_autonomous_database.partition_test_db.license_model
   }
 }
 
@@ -98,31 +104,22 @@ output "sqlplus_connection_string" {
   sensitive   = true
 }
 
-# Application Deployment Information - DEPRECATED: Move to Ansible
-# These should be removed in future versions
-output "test_commands" {
-  description = "[DEPRECATED] Use Ansible for application deployment"
-  value = {
-    message = "Use Ansible playbooks for application deployment"
-  }
-}
-
 # Environment Information
 output "environment_info" {
   description = "Environment information and metadata"
   value = {
     environment_name = var.environment_name
-    region          = var.region
-    compartment_id  = var.compartment_ocid
-    created_time    = oci_database_autonomous_database.partition_test_db.time_created
-    tags            = oci_database_autonomous_database.partition_test_db.freeform_tags
+    region           = var.region
+    compartment_id   = var.compartment_ocid
+    created_time     = oci_database_autonomous_database.partition_test_db.time_created
+    tags             = oci_database_autonomous_database.partition_test_db.freeform_tags
   }
 }
 
 # Infrastructure Quick Start Guide
 output "infrastructure_guide" {
   description = "Infrastructure connection guide"
-  value = <<-EOT
+  value       = <<-EOT
     # Infrastructure is ready. Use Ansible for application deployment:
     
     # 1. Download the database wallet:

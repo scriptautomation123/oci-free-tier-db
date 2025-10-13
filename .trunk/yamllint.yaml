@@ -1,0 +1,10 @@
+---
+# yamllint configuration to disable quoted-strings rule
+extends: default
+
+rules:
+  quoted-strings: disable
+  line-length:
+    max: 120
+  comments:
+    min-spaces-from-content: 1

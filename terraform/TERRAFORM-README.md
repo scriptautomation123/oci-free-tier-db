@@ -7,6 +7,7 @@ This directory contains Terraform configurations for automatically provisioning 
 This configuration is specifically designed to use **Oracle Always Free tier resources** to prevent any charges. The system includes multiple safety measures:
 
 ### Built-in Cost Protection
+
 - ✅ CPU validation: Enforces exactly 1 OCPU (free tier limit)
 - ✅ Storage validation: Enforces maximum 20GB (0.02TB) storage
 - ✅ Auto-scaling disabled: Prevents automatic cost increases
@@ -14,7 +15,9 @@ This configuration is specifically designed to use **Oracle Always Free tier res
 - ✅ Cost monitoring tags: All resources tagged for cost tracking
 
 ### Always Free Tier Limits
+
 Oracle Cloud Always Free tier provides:
+
 - **1 Oracle Autonomous Database** (1 OCPU, 20GB storage)
 - **20GB Object Storage**
 - **No time limits** on these resources
@@ -28,11 +31,13 @@ Oracle Cloud Always Free tier provides:
 ## Quick Start
 
 1. **Navigate to the terraform directory**:
+
    ```bash
-   cd oci/terraform
+   cd terraform
    ```
 
 2. **Configure your environment**:
+
    ```bash
    cp terraform.tfvars.example terraform.tfvars
    # Edit terraform.tfvars with your OCI details
@@ -48,6 +53,7 @@ Oracle Cloud Always Free tier provides:
 ## Configuration
 
 ### Required Variables
+
 Edit `terraform.tfvars` with your OCI details:
 
 ```hcl
@@ -62,6 +68,7 @@ acknowledge_free_tier_limits = true
 ```
 
 ### Always Free Tier Settings (Pre-configured)
+
 These settings are optimized for Always Free tier and should not be changed:
 
 ```hcl
@@ -94,17 +101,67 @@ The Terraform configuration includes validation to prevent accidental charges:
 
 ⚠️ **Region Availability**: Always Free resources are available in home region and one additional region. Verify your region supports Always Free tier.
 
+## Integration with Ansible
+
+🤖 **This Terraform configuration is designed to be orchestrated by Ansible.**
+
+**DO NOT run Terraform commands directly in production environments.**
+
+Instead, use the provided Ansible playbooks:
+
+```bash
+# Full deployment orchestration
+ansible-playbook ../ansible/playbooks/deploy-complete-suite.yml
+
+# Infrastructure only
+ansible-playbook ../ansible/playbooks/deploy-database.yml
+
+# Safe cleanup
+ansible-playbook ../ansible/playbooks/cleanup-resources.yml
+```
+
+### Why Ansible Orchestration?
+
+- **Cost Protection**: Multi-layer validation prevents accidental charges
+- **User Experience**: Progress indicators and comprehensive error handling
+- **Environment Setup**: Automatic tool installation and configuration
+- **Application Integration**: Seamless database configuration and package deployment
+- **Safety Features**: Pre-flight checks and Always Free tier validation
+
+### Manual Terraform Usage (Development Only)
+
+If you need to run Terraform directly for development/debugging:
+
+```bash
+# Initialize and validate
+terraform init
+terraform validate
+
+# Plan with Always Free protection
+terraform plan -var-file="terraform.tfvars"
+
+# Apply (only after thorough review)
+terraform apply
+
+# Always check outputs
+terraform output
+```
+
+**⚠️ WARNING**: Direct Terraform usage bypasses Ansible's cost protection and validation layers.
+
 ## Outputs
 
 After successful deployment, you'll receive:
+
 - Database connection strings
 - Admin username and password
 - Object storage bucket details
-- SQL*Plus connection examples
+- SQL\*Plus connection examples
 
 ## Cleanup
 
 To destroy all resources:
+
 ```bash
 terraform destroy
 ```

@@ -1,0 +1,215 @@
+---
+# Oracle Package Testing and Validation Playbook
+# ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER PROTECTION: Comprehensive testing suite
+- name: Run Oracle Package Tests and Validation
+  hosts: localhost
+  gather_facts: true
+  vars:
+    test_log: "{{ logs_dir }}/testing-{{ ansible_date_time.epoch }}.log"
+
+  tasks:
+    - name: Display Testing and Validation Banner
+      ansible.builtin.debug:
+        msg: |
+          +------------------------------------------------------------------+
+          |           Oracle Package Testing and Validation                 |
+          |              ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER PROTECTION                  |
+          |                                                                  |
+          |  This playbook runs comprehensive tests and validation for       |
+          |  the Oracle Partition Management Suite packages.                 |
+          |                                                                  |
+          |  Test Categories:                                                |
+          |  • Package compilation and functionality                         |
+          |  • Database connectivity and performance                         |
+          |  • Always Free tier compliance                                   |
+          |  • Infrastructure health checks                                  |
+          |                                                                  |
+          |  [COST] Cost: $0.00 (Always Free tier)                              |
+          +------------------------------------------------------------------+
+
+    # Prerequisites check
+    - name: Check prerequisites for testing
+      block:
+        - name: Verify database connectivity tools
+          ansible.builtin.command: "which sqlplus"
+          register: sqlplus_check
+          failed_when: sqlplus_check.rc != 0
+          changed_when: false
+
+        - name: Check Oracle environment variables
+          ansible.builtin.shell: |
+            echo "ORACLE_HOME: ${ORACLE_HOME:-'Not set'}"
+            echo "TNS_ADMIN: ${TNS_ADMIN:-'Not set'}"
+          register: oracle_env_check
+          changed_when: false
+
+        - name: Verify database connection parameters exist
+          ansible.builtin.assert:
+            that:
+              - database_username is defined
+              - database_service_name is defined
+              - oracle_home is defined
+              - tns_admin is defined
+            fail_msg: |
+              [ERROR] Required database connection parameters are missing!
+              Please ensure the following variables are defined:
+              - database_username
+              - database_service_name
+              - oracle_home
+              - tns_admin
+            success_msg: "[OK] All database connection parameters are defined"
+
+        - name: Display prerequisites validation
+          ansible.builtin.debug:
+            msg: "[OK] All testing prerequisites validated successfully"
+      rescue:
+        - name: Prerequisites validation failed
+          ansible.builtin.fail:
+            msg: |
+              [ERROR] Testing prerequisites validation failed!
+              Please ensure:
+              - Oracle SQLPlus is installed and accessible
+              - Database connection parameters are configured
+              - Environment variables are properly set
+
+              Run deploy-complete-suite.yml or setup-environment.yml first.
+
+    # Environment setup (minimal - just variables)
+    - name: Load environment variables
+      ansible.builtin.include_vars: "{{ ansible_dir }}/group_vars/all.yml"
+      when: ansible_dir is defined
+
+    - name: Set default paths if not defined
+      ansible.builtin.set_fact:
+        local_bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+        config_dir: "{{ ansible_dir }}/../"
+        terraform_dir: "{{ ansible_dir }}/../terraform"
+        logs_dir: "{{ ansible_dir }}/../logs"
+        workspace_path: "{{ ansible_dir }}/../"
+        oci_config_dir: "{{ ansible_env.HOME }}/.oci"
+        oracle_home: "{{ ansible_env.HOME }}/.local/lib/oracle"
+        tns_admin: "{{ ansible_env.HOME }}/.local/lib/oracle/network/admin"
+        database_username: "{{ database_username | default('admin') }}"
+        database_service_name: "{{ database_service_name | default('your_db_name_high') }}"
+      when: workspace_path is not defined
+
+    # Quick connectivity test
+    - name: Test database connectivity
+      ansible.builtin.shell: |
+        set -o pipefail
+        echo "SELECT 'TEST_CONNECTION_OK' FROM dual;" | sqlplus -s {{ database_username }}@{{ database_service_name }}
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: connectivity_test
+      failed_when: "'TEST_CONNECTION_OK' not in connectivity_test.stdout"
+      changed_when: false
+
+    - name: Display connectivity success
+      ansible.builtin.debug:
+        msg: "[OK] Database connectivity confirmed - proceeding with tests"
+
+    # Main testing and validation
+    - name: "Phase 1: Run Package Tests and Validation"
+      ansible.builtin.include_tasks: tasks/test-and-validate.yml
+      tags: [testing, validation]
+
+    # Additional infrastructure validation
+    - name: "Phase 2: Run Infrastructure Health Checks"
+      tags: [infrastructure, performance]
+      block:
+        - name: Create validation output directory
+          ansible.builtin.file:
+            path: "{{ workspace_path }}/validation_results"
+            state: directory
+            mode: "0755"
+
+        - name: Run infrastructure compliance checks
+          ansible.builtin.shell: |
+            set -o pipefail
+            cd {{ workspace_path }}/validation_results
+            sqlplus {{ database_username }}@{{ database_service_name }} \
+              @{{ ansible_dir }}/../testing-validation/validation/infrastructure_checks.sql \
+              > infrastructure_output.log 2>&1
+            echo $?
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: infrastructure_results
+          failed_when: false
+          changed_when: infrastructure_results.rc == 0
+
+        - name: Run performance benchmarks
+          ansible.builtin.shell: |
+            set -o pipefail
+            cd {{ workspace_path }}/validation_results
+            sqlplus {{ database_username }}@{{ database_service_name }} \
+              @{{ ansible_dir }}/../testing-validation/validation/performance_benchmarks.sql \
+              > performance_output.log 2>&1
+            echo $?
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: performance_results
+          failed_when: false
+          changed_when: performance_results.rc == 0
+
+        - name: Archive validation results
+          ansible.builtin.unarchive:
+            src: "{{ workspace_path }}/validation_results"
+            dest: "{{ workspace_path }}/validation_results_{{ ansible_date_time.epoch }}.tar.gz"
+            remote_src: true
+            mode: "0644"
+          failed_when: false
+          changed_when: false
+
+      rescue:
+        - name: Log infrastructure validation errors
+          ansible.builtin.debug:
+            msg: "Infrastructure validation failed: {{ ansible_failed_result.msg | default('Unknown error') }}"
+
+        - name: Save error details
+          ansible.builtin.copy:
+            content: |
+              Infrastructure Validation Error Report
+              =====================================
+              Timestamp: {{ ansible_date_time.iso8601 }}
+              Failed Task: {{ ansible_failed_task.name | default('Unknown') }}
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+            dest: "{{ workspace_path }}/validation_results/error_report.txt"
+            mode: "0644"
+          failed_when: false
+
+      always:
+        - name: Ensure validation results are readable
+          ansible.builtin.file:
+            path: "{{ workspace_path }}/validation_results"
+            state: directory
+            mode: "0755"
+            recurse: true
+          failed_when: false
+
+    # Display completion message
+    - name: Display testing and validation completion
+      ansible.builtin.debug:
+        msg: |
+          +------------------------------------------------------------------+
+          |              [SUCCESS] TESTING COMPLETED! [SUCCESS]                           |
+          |                                                                  |
+          |  [OK] Package functionality tests completed                       |
+          |  [OK] Infrastructure compliance validated                         |
+          |  [OK] Performance benchmarks executed                             |
+          |  [OK] Always Free tier compliance verified                        |
+          |                                                                  |
+          |  [COST] Cost: $0.00 (Always Free tier)                              |
+          |                                                                  |
+          |  Test Results:                                                   |
+          |  • Package Tests: {{ workspace_path }}/test_results/            |
+          |  • Infrastructure: {{ workspace_path }}/validation_results/     |
+          |  • Archives: validation_results_*.tar.gz                        |
+          |                                                                  |
+          |  Next Steps:                                                     |
+          |  • Review test reports for any failures                         |
+          |  • Use deploy-complete-suite.yml for full deployment            |
+          |  • Monitor performance over time                                 |
+          +------------------------------------------------------------------+

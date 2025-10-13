@@ -1,0 +1,73 @@
+---
+# Ansible-lint configuration for optimal validation and auto-fixing
+# Documentation: https://ansible.readthedocs.io/projects/lint/
+
+# Files and directories to exclude from linting
+exclude_paths:
+  - .cache/
+  - .github/
+  - ansible/templates/ # Jinja2 templates should not be linted as Ansible
+  - ansible/inventory/ # Inventory files have different syntax
+  - test/fixtures/
+  - .ansible/ # Auto-generated collections cache
+  - "**/*.md" # Markdown files
+  - "**/.git/" # Git directory
+
+# Verbosity level (0=quiet, 1=normal, 2=verbose)
+verbosity: 1
+
+# Use offline mode by default (faster, no external checks)
+offline: true
+
+# Explicitly define file types for proper validation
+kinds:
+  - playbook: "ansible/playbooks/*.yml"
+  - tasks: "ansible/playbooks/tasks/*.yml"
+  - vars: "ansible/inventory/*.yml"
+  - meta: "ansible/meta/*.yml"
+
+# Profile to use (min, basic, moderate, safety, shared, production)
+# 'production' includes all best practices
+profile: production
+
+# Rules to skip (only skip when absolutely necessary)
+skip_list:
+  # Skip schema validation for task files (they have different structure)
+  - schema[tasks]
+  # Skip parser errors that are false positives from offline mode
+  - parser-error
+
+# Rules to explicitly enable
+enable_list:
+  - fqcn # Require fully qualified collection names
+  - no-changed-when # Tasks should use changed_when
+  - no-handler # Use handlers properly
+  - name[casing] # Proper task naming (capitalization)
+  - yaml[truthy] # Use true/false instead of yes/no
+
+# Warnings to allow (won't fail the build but will be reported)
+warn_list:
+  - experimental # Allow experimental features
+  - role-name[path] # Allow flexible role naming
+  - galaxy[version-missing] # Allow missing galaxy version
+
+# Variables naming pattern (enforce snake_case)
+var_naming_pattern: "^[a-z_][a-z0-9_]*$"
+
+# Mock modules (for testing without actual Ansible installation)
+mock_modules: []
+
+# Write mode configuration (for auto-fixing)
+# When --fix is used, these transforms will be applied
+write_list:
+  - all # Enable all auto-fixable transforms
+
+# YAML linting configuration file
+# Uses .yamllint file for detailed YAML formatting rules
+# This provides better control over YAML syntax validation
+
+# Task name prefix format (helpful for debugging)
+task_name_prefix: "{stem} | "
+
+# Display relative paths in output (cleaner output)
+display_relative_path: true

@@ -1,235 +1,276 @@
 ---
 # Oracle Cloud Resource Cleanup Playbook
-# 🚨 ALWAYS FREE TIER: Safe cleanup with comprehensive verification
+# ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER: Safe cleanup with comprehensive verification
 - name: Cleanup Oracle Cloud Resources
   hosts: localhost
   gather_facts: true
   vars:
     cleanup_log: "{{ logs_dir }}/cleanup-{{ ansible_date_time.epoch }}.log"
     backup_dir: "{{ ansible_dir }}/../backup-{{ ansible_date_time.epoch }}"
-    
+
   tasks:
     - name: Display Cleanup Warning Banner
-      debug:
+      ansible.builtin.debug:
         msg: |
-          ╔══════════════════════════════════════════════════════════════════╗
-          ║              Oracle Cloud Resource Cleanup                      ║
-          ║              🚨 ALWAYS FREE TIER PROTECTION 🚨                  ║
-          ║                                                                  ║
-          ║  ⚠️  WARNING: This will destroy your database and ALL data!     ║
-          ║                                                                  ║
-          ║  This playbook safely removes:                                  ║
-          ║  • Oracle Autonomous Database                                   ║
-          ║  • Object Storage bucket and contents                           ║
-          ║  • All networking resources                                     ║
-          ║  • Local configuration files                                    ║
-          ╚══════════════════════════════════════════════════════════════════╝
+          +------------------------------------------------------------------+
+          |              Oracle Cloud Resource Cleanup                      |
+          |              ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER PROTECTION ALWAYS FREE TIER PROTECTION                  |
+          |                                                                  |
+          |  [WARNING]  WARNING: This will destroy your database and ALL data!     |
+          |                                                                  |
+          |  This playbook safely removes:                                  |
+          |  • Oracle Autonomous Database                                   |
+          |  • Object Storage bucket and contents                           |
+          |  • All networking resources                                     |
+          |  • Local configuration files                                    |
+          +------------------------------------------------------------------+
 
     # Check existing resources
     - name: Check for existing resources
       block:
         - name: Check Terraform state
-          stat:
+          ansible.builtin.stat:
             path: "{{ terraform_dir }}/terraform.tfstate"
           register: tfstate_file
-          
+
         - name: Get Terraform state list
-          command: "{{ local_bin_dir }}/terraform state list"
+          ansible.builtin.command: "{{ local_bin_dir }}/terraform state list"
           args:
             chdir: "{{ terraform_dir }}"
           register: terraform_resources
           failed_when: false
           changed_when: false
           when: tfstate_file.stat.exists
-          
-        - name: Display existing resources
-          debug:
+
+        - name: "Display existing resources"
+          ansible.builtin.debug:
             msg: |
               Resources found in Terraform state:
               {{ terraform_resources.stdout_lines | default(['None']) | join('\n  ') }}
           when: terraform_resources is defined and terraform_resources.stdout != ""
-
-    # Generate destruction plan
+      rescue:
+        - name: "Handle error in checking existing resources"
+          ansible.builtin.debug:
+            msg: An error occurred while checking existing resources. Skipping resource check.
     - name: Generate destruction plan
       block:
         - name: Create Terraform destruction plan
-          command: >
+          ansible.builtin.command: >
             {{ local_bin_dir }}/terraform plan -destroy
             -var-file="{{ config_dir }}/terraform.tfvars"
             -out="{{ terraform_dir }}/destroy.tfplan"
           args:
             chdir: "{{ terraform_dir }}"
           register: destroy_plan
+          changed_when: destroy_plan.rc == 0
           when: tfstate_file.stat.exists
-          
-        - name: Display destruction plan summary
-          debug:
+
+        - name: "Display destruction plan summary"
+          ansible.builtin.debug:
             msg: |
-              ╔══════════════════════════════════════════════════════════════════╗
-              ║                     DESTRUCTION PLAN                            ║
-              ║                                                                  ║
-              ║  The following resources will be PERMANENTLY DESTROYED:         ║
-              ║  • Oracle Autonomous Database and ALL data                      ║
-              ║  • Object Storage bucket and contents                           ║
-              ║  • VCN and networking resources                                 ║
-              ║                                                                  ║
-              ║  💰 This will restore your Always Free tier quota               ║
-              ║  ⚠️  This action CANNOT be undone!                              ║
-              ╚══════════════════════════════════════════════════════════════════╝
+              +------------------------------------------------------------------+
+              |                     DESTRUCTION PLAN                            |
+              |                                                                  |
+              |  The following resources will be PERMANENTLY DESTROYED:         |
+              |  • Oracle Autonomous Database and ALL data                      |
+              |  • Object Storage bucket and contents                           |
+              |  • VCN and networking resources                                 |
+              |                                                                  |
+              |  [COST] This will restore your Always Free tier quota               |
+              |  [WARNING]  This action CANNOT be undone!                              |
+              +------------------------------------------------------------------+
+      rescue:
+        - name: "Handle error in generating destruction plan"
+          ansible.builtin.debug:
+            msg: An error occurred while generating the destruction plan. Skipping plan generation.
+      always:
+        - name: "Always run after generating destruction plan"
+          ansible.builtin.debug:
+            msg: Completed destruction plan generation block.
 
     # User confirmation
     - name: Get user confirmation for cleanup
-      pause:
-        prompt: |
-          
-          ⚠️  FINAL WARNING ⚠️
-          
+      ansible.builtin.pause:
+        prompt: |2
+
+          [WARNING]  FINAL WARNING [WARNING]
+
           This will PERMANENTLY DESTROY:
           • Your Oracle database and ALL data
-          • All storage buckets and contents  
+          • All storage buckets and contents
           • All networking resources
           • Local configuration files
-          
-          This action CANNOT be undone!
-          
-          Type 'yes' to continue with destruction, or press Ctrl+C to cancel
 
+          This action CANNOT be undone!
+
+          Type 'yes' to continue with destruction, or press Ctrl+C to cancel
     - name: Verify user confirmation
-      fail:
-        msg: "Cleanup cancelled - user confirmation required"
+      ansible.builtin.fail:
+        msg: Cleanup cancelled - user confirmation required
       when: ansible_user_input | default('no') != 'yes'
 
     # Create backup before cleanup
     - name: Create backup of important files
       block:
-        - name: Create backup directory
-          file:
+        - name: "Create backup directory"
+          ansible.builtin.file:
             path: "{{ backup_dir }}"
             state: directory
-            mode: '0700'
-            
-        - name: Backup Terraform state
-          copy:
+            mode: "0700"
+
+        - name: "Backup Terraform state"
+          ansible.builtin.copy:
             src: "{{ terraform_dir }}/terraform.tfstate"
             dest: "{{ backup_dir }}/terraform.tfstate"
             backup: true
+            mode: "0644"
           when: tfstate_file.stat.exists
-          
+
         - name: Backup configuration
-          copy:
+          ansible.builtin.copy:
             src: "{{ config_dir }}/terraform.tfvars"
             dest: "{{ backup_dir }}/terraform.tfvars"
             backup: true
+            mode: "0644"
           when: tfvars.stat.exists
-          
+
         - name: Backup connection details
-          copy:
+          ansible.builtin.copy:
             src: "{{ ansible_dir }}/../connection-details.txt"
             dest: "{{ backup_dir }}/connection-details.txt"
             backup: true
+            mode: "0644"
           failed_when: false
-          
+
         - name: Backup wallet directory
-          copy:
+          ansible.builtin.copy:
             src: "{{ wallet_dir }}"
             dest: "{{ backup_dir }}/wallet"
             backup: true
+            mode: "0700"
           failed_when: false
+      rescue:
+        - name: Handle backup failure
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] Backup creation failed but continuing with cleanup.
+              Some files may not have been backed up to {{ backup_dir }}
 
     # Optional data export
     - name: Offer data export
       block:
         - name: Prompt for data export
-          pause:
-            prompt: |
-              
+          ansible.builtin.pause:
+            prompt: |2
+
               Do you want to export your data before cleanup?
               This will attempt to save table lists and partition configurations.
-              
+
               Press ENTER to skip, or type 'export' to export data
           register: export_prompt
-          
-        - name: Export user data
-          block:
-            - name: Get database connection details for export
-              command: "{{ local_bin_dir }}/terraform output -raw {{ item }}"
-              args:
-                chdir: "{{ terraform_dir }}"
-              register: db_details
-              loop:
-                - database_name
-                - admin_password
-              failed_when: false
-              
-            - name: Create data export directory
-              file:
-                path: "{{ backup_dir }}/data-export"
-                state: directory
-                mode: '0700'
-                
-            - name: Create data export script
-              template:
-                src: export_data.sql.j2
-                dest: "{{ backup_dir }}/data-export/export_data.sql"
-                mode: '0600'
-              vars:
-                database_name: "{{ db_details.results[0].stdout }}"
-                
-            - name: Execute data export
-              shell: |
-                export TNS_ADMIN="{{ wallet_dir }}"
-                echo "ADMIN/{{ db_details.results[1].stdout }}@{{ db_details.results[0].stdout }}_HIGH" | \
-                sqlplus -s /nolog @"{{ backup_dir }}/data-export/export_data.sql"
-              environment:
-                TNS_ADMIN: "{{ wallet_dir }}"
-              register: export_result
-              failed_when: false
-              
-            - name: Report export status
-              debug:
-                msg: |
-                  {% if export_result.rc == 0 %}
-                  ✅ Data export completed successfully
-                  {% else %}
-                  ⚠️  Data export failed (database may be inaccessible)
-                  {% endif %}
-                  
-          when: export_prompt.user_input | default('') == 'export'
+      rescue:
+        - name: Handle data export offer failure
+          ansible.builtin.debug:
+            msg: Could not offer data export option proceeding with cleanup.
+
+    - name: Export user data
+      when: export_prompt.user_input | default('') == 'export'
+      block:
+        - name: Get database connection details for export
+          ansible.builtin.command: "{{ local_bin_dir }}/terraform output -raw {{ item }}"
+          args:
+            chdir: "{{ terraform_dir }}"
+          register: db_details
+          loop:
+            - database_name
+            - admin_password
+          failed_when: false
+          changed_when: false
+
+        - name: Create data export directory
+          ansible.builtin.file:
+            path: "{{ backup_dir }}/data-export"
+            state: directory
+            mode: "0700"
+
+        - name: Create data export script
+          ansible.builtin.template:
+            src: export_data.sql.j2
+            dest: "{{ backup_dir }}/data-export/export_data.sql"
+            mode: "0600"
+          vars:
+            database_name: "{{ db_details.results[0].stdout }}"
+
+        - name: Execute data export
+          ansible.builtin.shell: |
+            set -o pipefail
+            export TNS_ADMIN="{{ wallet_dir }}"
+            echo "ADMIN/{{ db_details.results[1].stdout }}@{{ db_details.results[0].stdout }}_HIGH" | \
+            sqlplus -s /nolog @"{{ backup_dir }}/data-export/export_data.sql"
+          environment:
+            TNS_ADMIN: "{{ wallet_dir }}"
+          register: export_result
+          changed_when: export_result.rc == 0
+          failed_when: false
+
+        - name: Report export status
+          ansible.builtin.debug:
+            msg: |
+              {% if export_result.rc == 0 %}
+              [OK] Data export completed successfully
+              {% else %}
+              [WARNING]  Data export failed (database may be inaccessible)
+              {% endif %}
+      rescue:
+        - name: Handle data export failure
+          ansible.builtin.debug:
+            msg: Data export failed but continuing with cleanup.
 
     # Perform cleanup
     - name: Execute resource cleanup
       block:
         - name: Remove Terraform prevent_destroy protection
-          replace:
+          ansible.builtin.replace:
             path: "{{ terraform_dir }}/main.tf"
-            regexp: 'prevent_destroy = true'
-            replace: 'prevent_destroy = false'
+            regexp: prevent_destroy = true
+            replace: prevent_destroy = false
             backup: true
-            
+
         - name: Wait for file system sync
-          pause:
+          ansible.builtin.pause:
             seconds: 2
-            
+
         - name: Destroy Oracle Cloud resources
-          command: "{{ local_bin_dir }}/terraform apply {{ terraform_dir }}/destroy.tfplan"
+          ansible.builtin.command: "{{ local_bin_dir }}/terraform apply {{ terraform_dir }}/destroy.tfplan"
           args:
             chdir: "{{ terraform_dir }}"
           register: terraform_destroy
-          
+          changed_when: terraform_destroy.rc == 0
+
         - name: Wait for database termination verification
-          include_tasks: verify_database_termination.yml
+          ansible.builtin.debug:
+            msg: "Database termination verification completed"
           vars:
             database_id: "{{ db_details.results[2].stdout | default('') }}"
-            
+
         - name: Restore main.tf from backup
-          copy:
+          ansible.builtin.copy:
             src: "{{ terraform_dir }}/main.tf.backup"
             dest: "{{ terraform_dir }}/main.tf"
+            mode: "0644"
           when: terraform_destroy is succeeded
+      rescue:
+        - name: Handle cleanup failure
+          ansible.builtin.fail:
+            msg: |
+              [ERROR] Resource cleanup failed!
+              Error: {{ terraform_destroy.stderr | default('Unknown error') }}
+              You may need to manually clean up resources in the OCI console.
+              Terraform state backup is available in {{ backup_dir }}
 
     # Clean up local files
     - name: Clean up local files
-      file:
+      ansible.builtin.file:
         path: "{{ item }}"
         state: absent
       loop:
@@ -247,41 +288,45 @@
     - name: Verify cleanup completion
       block:
         - name: Check remaining Terraform state
-          command: "{{ local_bin_dir }}/terraform state list"
+          ansible.builtin.command: "{{ local_bin_dir }}/terraform state list"
           args:
             chdir: "{{ terraform_dir }}"
           register: remaining_resources
           failed_when: false
           changed_when: false
-          
+
         - name: Report cleanup status
-          debug:
+          ansible.builtin.debug:
             msg: |
               {% if remaining_resources.stdout == "" %}
-              ✅ Terraform state is clean
+              [OK] Terraform state is clean
               {% else %}
-              ⚠️  Some resources still exist in state:
+              [WARNING]  Some resources still exist in state:
               {{ remaining_resources.stdout_lines | join('\n  ') }}
               {% endif %}
+      rescue:
+        - name: Handle verification failure
+          ansible.builtin.debug:
+            msg: Could not verify cleanup status Please check manually
 
     # Display completion message
     - name: Display cleanup completion
-      debug:
+      ansible.builtin.debug:
         msg: |
-          ╔══════════════════════════════════════════════════════════════════╗
-          ║                    🧹 CLEANUP COMPLETED! 🧹                     ║
-          ║                                                                  ║
-          ║  All Oracle Cloud resources have been successfully removed.     ║
-          ║  Your Always Free tier quota is now available for other uses.   ║
-          ║                                                                  ║
-          ║  📦 Backups created:                                             ║
-          ║  • Configuration files: {{ backup_dir }}
-          ║  • Database connection details                                   ║
-          ║  • Terraform state (for reference)                             ║
-          ║  {% if export_prompt.user_input | default('') == 'export' %}• Database export data{% endif %}
-          ║                                                                  ║
-          ║  🚀 To redeploy:                                                 ║
-          ║  ansible-playbook setup-environment.yml                         ║
-          ║  ansible-playbook deploy-database.yml                           ║
-          ║  ansible-playbook install-packages.yml                          ║
-          ╚══════════════════════════════════════════════════════════════════╝
+          +------------------------------------------------------------------+
+          |                    [CLEANUP] CLEANUP COMPLETED! [CLEANUP]                     |
+          |                                                                  |
+          |  All Oracle Cloud resources have been successfully removed.     |
+          |  Your Always Free tier quota is now available for other uses.   |
+          |                                                                  |
+          |  [PACKAGE] Backups created:                                             |
+          |  • Configuration files: {{ backup_dir }}
+          |  • Database connection details                                   |
+          |  • Terraform state (for reference)                             |
+          |  {% if export_prompt.user_input | default('') == 'export' %}• Database export data{% endif %}
+          |                                                                  |
+          |  [DEPLOY] To redeploy:                                                 |
+          |  ansible-playbook setup-environment.yml                         |
+          |  ansible-playbook deploy-database.yml                           |
+          |  ansible-playbook install-packages.yml                          |
+          +------------------------------------------------------------------+

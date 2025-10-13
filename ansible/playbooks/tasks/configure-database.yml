@@ -3,69 +3,148 @@
 # Handles database wallet, connection setup, and initial configuration
 
 - name: Create wallet directory
-  file:
+  ansible.builtin.file:
     path: "{{ wallet_dir }}"
     state: directory
-    mode: '0700'
+    mode: "0700"
 
 - name: Download database wallet
-  command: >
+  ansible.builtin.command: >
     {{ ansible_env.HOME }}/.local/bin/oci db autonomous-database generate-wallet
     --autonomous-database-id "{{ infrastructure.database_id.value }}"
     --password "{{ wallet_password | default('WalletPassword123#') }}"
     --file "{{ wallet_dir }}/wallet.zip"
   register: wallet_download
+  changed_when: wallet_download.rc == 0
+  retries: 3
+  delay: 10
+  rescue:
+    - name: Wallet download failed
+      ansible.builtin.fail:
+        msg: |
+          [ERROR] Failed to download database wallet!
+          Error: {{ wallet_download.stderr | default('Unknown error') }}
+
+          This usually indicates:
+          • Database is not ready yet (try again in a few minutes)
+          • Invalid database ID or permissions
+          • Network connectivity issues
+
+          Manual command to retry:
+          oci db autonomous-database generate-wallet \
+            --autonomous-database-id "{{ infrastructure.database_id.value }}" \
+            --password "{{ wallet_password | default('WalletPassword123#') }}" \
+            --file "{{ wallet_dir }}/wallet.zip"
 
 - name: Extract database wallet
-  unarchive:
+  ansible.builtin.unarchive:
     src: "{{ wallet_dir }}/wallet.zip"
     dest: "{{ wallet_dir }}"
     remote_src: true
 
 - name: Set wallet permissions
-  file:
+  ansible.builtin.file:
     path: "{{ wallet_dir }}"
-    mode: '0700'
+    mode: "0700"
     recurse: true
 
-- name: Test database connectivity
-  shell: |
-    export TNS_ADMIN="{{ wallet_dir }}"
-    echo "SELECT 'Connection successful' FROM dual;" | \
-    echo "{{ infrastructure.admin_username.value }}/{{ infrastructure.admin_password.value }}@{{ infrastructure.database_name.value }}_HIGH" | \
-    sqlplus -s /nolog
-  environment:
-    TNS_ADMIN: "{{ wallet_dir }}"
+- name: Test database connectivity via OCI CLI
+  ansible.builtin.command: >
+    {{ ansible_env.HOME }}/.local/bin/oci db autonomous-database get
+    --autonomous-database-id "{{ infrastructure.database_id.value }}"
+    --query 'data."lifecycle-state"'
+    --raw-output
   register: connectivity_test
-  failed_when: "'Connection successful' not in connectivity_test.stdout"
+  failed_when: connectivity_test.stdout != "AVAILABLE"
+  changed_when: false
+  retries: 3
+  delay: 15
+  rescue:
+    - name: Database connectivity check failed
+      ansible.builtin.debug:
+        msg: |
+          [WARNING] Database connectivity check failed!
+
+          Current database state: {{ connectivity_test.stdout | default('Unknown') }}
+          Expected state: AVAILABLE
+
+          This could indicate:
+          • Database is still provisioning or starting up
+          • Database is in maintenance mode
+          • Network connectivity issues
+          • Invalid database ID or permissions
+
+          You can check database status manually with:
+          oci db autonomous-database get --autonomous-database-id "{{ infrastructure.database_id.value }}"
+
+          Note: SQL connectivity test will be available after installing Oracle client tools.
+          For now, wallet and connection details are configured for manual testing.
+
+    - name: Continue despite connectivity issues
+      ansible.builtin.set_fact:
+        connectivity_verified: false
+
+- name: Verify wallet configuration
+  ansible.builtin.stat:
+    path: "{{ wallet_dir }}/tnsnames.ora"
+  register: wallet_tnsnames
+  failed_when: not wallet_tnsnames.stat.exists
+
+- name: Display connection readiness status
+  ansible.builtin.debug:
+    msg: |
+      [STATS] Database Connection Status:
+      - Database State: {{ connectivity_test.stdout | default('Unknown') }}
+      - Wallet Location: {{ wallet_dir }}
+      - TNS Configuration: {{ 'Found' if wallet_tnsnames.stat.exists else 'Missing' }}
+
+      {% if connectivity_test.stdout == 'AVAILABLE' and wallet_tnsnames.stat.exists %}
+      [OK] Database is ready for connections
+      {% else %}
+      [WARNING]  Database may need more time to be fully ready
+      {% endif %}
+
+      To test SQL connectivity manually (requires Oracle client):
+      export TNS_ADMIN="{{ wallet_dir }}"
+      sqlplus {{ infrastructure.admin_username.value }}/[password]@{{ infrastructure.database_name.value }}_HIGH
 
 - name: Create connection details file
-  template:
+  ansible.builtin.template:
     src: connection-details.txt.j2
     dest: "{{ ansible_dir }}/../connection-details.txt"
     backup: true
+    mode: "0644"
   vars:
     database_info: "{{ infrastructure }}"
     deployment_time: "{{ ansible_date_time.iso8601 }}"
 
 - name: Create database connection script
-  template:
+  ansible.builtin.template:
     src: connect-db.sh.j2
     dest: "{{ ansible_dir }}/../connect-db.sh"
-    mode: '0755'
+    mode: "0755"
   vars:
     database_name: "{{ infrastructure.database_name.value }}"
     admin_username: "{{ infrastructure.admin_username.value }}"
     admin_password: "{{ infrastructure.admin_password.value }}"
-    wallet_dir: "{{ wallet_dir }}"
+    wallet_directory: "{{ wallet_dir }}"
 
 - name: Display database configuration completion
-  debug:
+  ansible.builtin.debug:
     msg: |
-      ✅ Database configuration completed
-      
-      Connection test: PASSED
+      [OK] Database configuration completed
+
+      Database Status: {{ connectivity_test.stdout | default('Unknown') }}
       Wallet location: {{ wallet_dir }}
       Connection script: ../connect-db.sh
-      
-      Quick connect: ./connect-db.sh
+
+      {% if connectivity_test.stdout == 'AVAILABLE' %}
+      [OK] Database is AVAILABLE and ready for connections
+      {% else %}
+      [WARNING]  Database status: {{ connectivity_test.stdout | default('Unknown') }}
+      {% endif %}
+
+      Quick connect (requires Oracle client): ./connect-db.sh
+
+      💡 Note: Full SQL connectivity testing requires Oracle Instant Client installation.
+         Current test verifies database availability via OCI CLI only.
