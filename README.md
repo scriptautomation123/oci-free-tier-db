@@ -956,3 +956,45 @@ After successful deployment, you should have:
 - **Validation Guide**: `testing-validation/VALIDATION_GUIDE.md`
 - **Test Data Guide**: `testing-validation/testing/README.md`
 ````
+
+```sql
+SELECT
+    tp.table_name,
+    tp.partition_name,
+    TO_CHAR(SUM(s.bytes) / 1024 / 1024 / 1024, '999,999,999.00') AS partition_size_gb,
+    o.created,
+    tp.num_rows,
+    CASE
+        WHEN tp.num_rows > 0 THEN ROUND(SUM(s.bytes) / tp.num_rows, 2)
+        ELSE 0
+    END AS avg_row_size_bytes
+FROM
+    all_tab_partitions tp
+JOIN
+    all_objects o ON tp.table_owner = o.owner
+    AND tp.partition_name = o.subobject_name
+    AND o.object_type = 'TABLE PARTITION'
+LEFT JOIN
+    all_segments s ON s.owner = tp.table_owner
+    AND s.partition_name = tp.partition_name
+    AND s.segment_name IN (
+        -- Table partition segment
+        SELECT tp.table_name FROM DUAL
+        UNION ALL
+        -- Index partition segments
+        SELECT ip.index_name FROM all_ind_partitions ip WHERE ip.table_owner = tp.table_owner AND ip.table_name = tp.table_name AND ip.partition_name = tp.partition_name
+        UNION ALL
+        -- LOB partition segments
+        SELECT lp.segment_name FROM all_lob_partitions lp WHERE lp.table_owner = tp.table_owner AND lp.table_name = tp.table_name AND lp.partition_name = tp.partition_name
+    )
+WHERE
+    tp.table_owner = UPPER('&table_owner')
+    AND tp.table_name = UPPER('&table_name')
+GROUP BY
+    tp.table_name,
+    tp.partition_name,
+    o.created,
+    tp.num_rows
+ORDER BY
+    o.created;
+```
