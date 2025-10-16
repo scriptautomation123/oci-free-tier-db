@@ -7,15 +7,13 @@
 # See: https://github.com/ansible/ansible/issues/deprecation-warnings
 export ANSIBLE_DEPRECATION_WARNINGS=False
 
-# Set Ansible configuration location
-export ANSIBLE_CONFIG="${SCRIPT_DIR}/.ansible/ansible.cfg"
-
-# For debugging purposes, you can re-enable deprecation warnings:
-# export ANSIBLE_DEPRECATION_WARNINGS=True
-
 # Activate virtual environment if available
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-VENV_DIR="${SCRIPT_DIR}/.venv"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+VENV_DIR="${PROJECT_ROOT}/.venv"
+
+# Set Ansible configuration location
+export ANSIBLE_CONFIG="${PROJECT_ROOT}/.ansible/ansible.cfg"
 
 if [[ -f "$VENV_DIR/bin/activate" ]]; then
     source "$VENV_DIR/bin/activate"

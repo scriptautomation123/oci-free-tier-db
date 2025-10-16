@@ -18,8 +18,15 @@ YELLOW='\033[1;33m'
 BLUE='\033[0;34m'
 NC='\033[0m' # No Color
 
-TFVARS_FILE="terraform.tfvars"
-BACKUP_FILE="terraform.tfvars.backup.$(date +%Y%m%d_%H%M%S)"
+# Directories
+SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+TERRAFORM_DIR="$PROJECT_ROOT/terraform"
+TFVARS_FILE="$TERRAFORM_DIR/terraform.tfvars"
+BACKUP_FILE="$TERRAFORM_DIR/terraform.tfvars.backup.$(date +%Y%m%d_%H%M%S)"
+
+# Change to terraform directory
+cd "$TERRAFORM_DIR"
 
 echo -e "${BLUE}=============================================================================="
 echo -e "🔧 Generating terraform.tfvars from Environment Variables"

@@ -32,6 +32,19 @@ lint:
     - linters: [markdownlint]
       paths:
         - .specstory/**
+  definitions:
+    - name: ansible-lint
+      files: [yaml]
+      commands:
+        - output: regex
+          target: ${target}
+          run: ansible-lint --config-file .trunk/configs/.ansible-lint ${target}
+    - name: yamllint
+      files: [yaml]
+      commands:
+        - output: regex
+          target: ${target}
+          run: yamllint --config-file .trunk/configs/.yamllint ${target}
 actions:
   disabled:
     - trunk-announce

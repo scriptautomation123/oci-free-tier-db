@@ -15,8 +15,9 @@ readonly NC='\033[0m' # No Color
 
 # Script directory
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-ANSIBLE_DIR="${SCRIPT_DIR}/ansible"
-VENV_DIR="${SCRIPT_DIR}/.venv"
+PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
+ANSIBLE_DIR="${PROJECT_ROOT}/ansible"
+VENV_DIR="${PROJECT_ROOT}/.venv"
 ACTIVATE_SCRIPT="${VENV_DIR}/bin/activate"
 
 # ============================================================================

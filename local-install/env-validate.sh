@@ -22,7 +22,7 @@ readonly NC='\033[0m' # No Color
 # Script configuration
 SCRIPT_DIR="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 readonly SCRIPT_DIR
-readonly PROJECT_ROOT="$SCRIPT_DIR"
+readonly PROJECT_ROOT="$(cd "$SCRIPT_DIR/.." && pwd)"
 readonly LOG_FILE="${PROJECT_ROOT}/validation.log"
 
 # Validation counters

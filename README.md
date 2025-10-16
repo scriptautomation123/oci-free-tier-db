@@ -8,38 +8,47 @@ This repository provides a secure, zero-cost, production-grade automation suite 
 
 **Key Principles:**
 - **Terraform** provisions all infrastructure (databases, networking, storage)
-- **Ansible** manages schema lifecycle, deploys packages, and runs validation
+- **Ansible** manages schema lifecycle using a clean **role-based architecture**
 - **GitHub Actions** orchestrates both infrastructure (rare) and application (frequent) workflows
 - **Schema-based deployment** with granular lifecycle management (deploy/reset-schema/reset-data/test-only)
 - **Always Free Tier Protection** is strictly enforced at every layer
 
 ---
 
-## 📂 Repository Structure
+## 🏗️ Architecture: Role-Based Ansible with Terraform
 
+This project uses a **clean role architecture** that eliminates duplication and provides simple, focused playbooks:
+
+### New Structure (Role-Based)
 ```
-├── terraform/                  # Infrastructure as Code (provision via GitHub Actions or CLI)
-│   ├── main.tf
-│   ├── variables.tf
-│   ├── outputs.tf
-│   └── terraform.tfvars.example
+├── local-install/              # Local development tools and scripts
+├── terraform/                  # Infrastructure as Code
 ├── ansible/
-│   ├── playbooks/
-│   │   ├── local-complete.yml          # Schema lifecycle orchestrator
-│   │   ├── setup-environment.yml       # Local tool setup
-│   │   └── cleanup-resources.yml       # Safe cleanup
-│   └── tasks/                          # Modular Ansible tasks
-│       ├── schema-management.yml       # Schema lifecycle operations
-│       ├── manage-users.yml           # User and privilege management
-│       ├── configure-database.yml     # Database configuration
-│       ├── deploy-packages.yml        # Package deployment
-│       └── test-and-validate.yml      # Testing & validation
-├── .github/workflows/                  # Two-workflow architecture
-│   ├── provision-infrastructure.yml    # Infrastructure deployment (rare)
-│   └── deploy-oracle-packages.yml     # Schema/application deployment (frequent)
-├── testing-validation/                 # Validation and test scripts
-└── ...
+│   ├── roles/oracle_cloud_automation/    # Single source of truth
+│   │   ├── tasks/                        # All automation logic
+│   │   ├── templates/                    # Configuration templates
+│   │   ├── defaults/                     # Default variables
+│   │   └── meta/                         # Role metadata
+│   └── playbooks/                        # Simple orchestrators (8-9 lines each)
+│       ├── site.yml                      # Complete deployment
+│       ├── setup.yml                     # Environment setup
+│       ├── deploy.yml                    # Full deployment
+│       ├── test.yml                      # Testing only
+│       └── cleanup.yml                   # Resource cleanup
+├── .github/workflows/                    # Updated for role architecture
+│   ├── provision-infrastructure.yml      # Infrastructure deployment (rare)
+│   └── deploy-oracle-packages.yml       # Schema/application deployment (frequent)
+└── .ansible/                            # Centralized configuration
+    ├── ansible.cfg                      # Ansible configuration
+    └── inventory/localhost.yml          # Inventory file
 ```
+
+### Role Architecture Benefits
+- ✅ **No Duplication**: Single role contains all logic
+- ✅ **Reusable**: Role can be used in other projects  
+- ✅ **Maintainable**: Changes in one place
+- ✅ **Standard**: Follows Ansible best practices
+- ✅ **Flexible**: Tag-based execution for specific phases
 
 ---
 
@@ -60,7 +69,7 @@ terraform apply
 ```
 
 ### Application Workflow (Frequent - Daily/Weekly)
-**Schema Lifecycle Management:** Deploy, reset, or test database schemas and applications.
+**Schema Lifecycle Management:** Deploy, reset, or test database schemas and applications using role-based architecture.
 
 ```bash
 # Via GitHub Actions (recommended for teams)
@@ -69,42 +78,117 @@ gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-schema
 gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-data
 gh workflow run deploy-oracle-packages.yml -f deployment_action=test-only
 
-# Via local Ansible (for development)
-ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=deploy
-ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-schema
-ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-data
-ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=test-only
+# Via local Ansible role-based playbooks (for development)
+ansible-playbook ansible/playbooks/site.yml -e oracle_deployment_action=deploy
+ansible-playbook ansible/playbooks/deploy.yml -e oracle_deployment_action=reset-schema
+ansible-playbook ansible/playbooks/deploy.yml -e oracle_deployment_action=reset-data
+ansible-playbook ansible/playbooks/test.yml -e oracle_deployment_action=test-only
 ```
 
 ---
 
 ## 🔄 Schema Lifecycle Management
 
-### Deployment Actions
+This project provides **complete schema lifecycle automation** with deployment actions and enhanced connection management.
 
-| Action | Description | Use Case |
-|--------|-------------|----------|
-| `deploy` | Full schema deployment (drop + create + packages + data) | Initial deployment, major changes |
-| `reset-schema` | Drop and recreate schema structure only | Schema changes, DDL updates |
-| `reset-data` | Reset data while preserving schema | Data refresh, testing |
-| `test-only` | Run validation tests without changes | CI/CD validation, health checks |
+### Available Deployment Actions
+
+| Action | Description | Usage |
+|--------|-------------|-------|
+| `deploy` | Full deployment with schema and packages | Main deployment workflow |
+| `reset-schema` | Drop and recreate all schemas (preserves structure) | Reset to clean schema state |
+| `reset-data` | Clear all data but preserve schemas and packages | Data refresh scenarios |
+| `test-only` | Run validation and testing without deployment | CI/CD validation |
+
+### Core Commands
+
+```bash
+# 🚀 Complete deployment (most common)
+ansible-playbook ansible/playbooks/site.yml
+
+# 🔧 Environment setup (first time only)
+ansible-playbook ansible/playbooks/setup.yml
+
+# 📦 Deploy packages only
+ansible-playbook ansible/playbooks/deploy.yml
+
+# 🧪 Test and validate only
+ansible-playbook ansible/playbooks/test.yml
+
+# 🧹 Cleanup resources
+ansible-playbook ansible/playbooks/cleanup.yml
+```
+
+### Tag-Based Execution
+
+The role supports granular control through tags:
+
+```bash
+# Setup only
+ansible-playbook ansible/playbooks/site.yml --tags setup
+
+# Infrastructure only
+ansible-playbook ansible/playbooks/site.yml --tags infrastructure
+
+# Database configuration only
+ansible-playbook ansible/playbooks/site.yml --tags database
+
+# Package deployment only
+ansible-playbook ansible/playbooks/site.yml --tags packages
+
+# Testing only
+ansible-playbook ansible/playbooks/site.yml --tags testing
+
+# Schema management only
+ansible-playbook ansible/playbooks/site.yml --tags schema
+```
+
+### Schema Actions
+
+```bash
+# Reset schema (preserves structure)
+ansible-playbook ansible/playbooks/deploy.yml -e "oracle_deployment_action=reset-schema"
+
+# Reset data only (preserves schemas and packages)
+ansible-playbook ansible/playbooks/deploy.yml -e "oracle_deployment_action=reset-data"
+
+# Test without deployment
+ansible-playbook ansible/playbooks/test.yml -e "oracle_deployment_action=test-only"
+```
+
+### Migration from Previous Versions
+
+If you were using the old playbook structure, here are the key changes:
+
+**Playbook Mapping:**
+- `ansible/playbooks/local-complete.yml` → `ansible/playbooks/site.yml`
+- `ansible/playbooks/setup-environment.yml` → `ansible/playbooks/setup.yml`
+- `ansible/playbooks/local-test-validate.yml` → `ansible/playbooks/test.yml`
+- `ansible/playbooks/cleanup-resources.yml` → `ansible/playbooks/cleanup.yml`
+
+**Variable Changes:**
+All variables are now prefixed with `oracle_`:
+- `deployment_action` → `oracle_deployment_action`
+- `load_test_data` → `oracle_load_test_data`
+- `deployment_environment` → `oracle_deployment_environment`
 
 ### Enhanced Connection Management
+
+The role generates comprehensive connection details and management scripts:
+
+```bash
+# Generated after deployment
+cat connection-details.txt           # Complete connection information
+./connect-db.sh                      # Interactive database connection
+./run-examples.sh                    # Execute test queries
+./benchmark-performance.sh           # Performance testing
+```
 
 **Multiple Connection Patterns:**
 - **Admin Connection:** Full database administration access
 - **Schema Connection:** Application-specific operations using dedicated schema user
 - **Interactive Mode:** Menu-driven connection selection
 - **Read-only Mode:** Safe data exploration without modification risk
-
-```bash
-# Enhanced connection script with schema awareness
-./enhanced-connect-db.sh                    # Interactive mode
-./enhanced-connect-db.sh admin             # Direct admin connection
-./enhanced-connect-db.sh schema            # Schema user connection
-./enhanced-connect-db.sh readonly          # Read-only mode
-DB_SCHEMA_USER=MYUSER ./enhanced-connect-db.sh schema  # Custom schema
-```
 
 ---
 
@@ -153,9 +237,10 @@ Multi-layer cost protection ensures zero charges:
 
 ### Development Workflow
 1. **Infrastructure First:** Use GitHub Actions `provision-infrastructure.yml` to create database (rare)
-2. **Schema Development:** Use `deploy-oracle-packages.yml` for iterative development (frequent)
-3. **Local Testing:** Use `ansible-playbook local-complete.yml` for rapid iteration
-4. **Connection Management:** Use `enhanced-connect-db.sh` for secure, role-based access
+2. **Schema Development:** Use `deploy-oracle-packages.yml` for iterative development (frequent)  
+3. **Local Testing:** Use `ansible-playbook ansible/playbooks/site.yml` for rapid iteration
+4. **Connection Management:** Use generated `connect-db.sh` for secure, role-based access
+5. **Environment Setup:** Run `ansible-playbook ansible/playbooks/setup.yml` for initial local setup
 
 ### Schema Management
 - **Use dedicated schema users** instead of admin for application operations
@@ -344,14 +429,25 @@ This project provides complete automation for deploying the Oracle Partition Man
 
 ## 🚀 Quick Start
 
-### Option 1: Local Development (One Command)
+### Option 1: Local Development (Role-Based Architecture)
+
+**First-time environment setup:**
 
 ```bash
-# Complete end-to-end deployment with schema management
-ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=deploy
+cd /home/swapa/code/oci-free-tier-db
+source .venv/bin/activate
+ANSIBLE_CONFIG=.ansible/ansible.cfg ansible-playbook ansible/playbooks/setup.yml
 ```
 
-This single command will:
+**Complete deployment:**
+
+```bash
+cd /home/swapa/code/oci-free-tier-db
+source .venv/bin/activate
+ANSIBLE_CONFIG=.ansible/ansible.cfg ansible-playbook ansible/playbooks/site.yml
+```
+
+This approach will:
 - ✅ Install and configure OCI CLI and Terraform (no sudo required)
 - ✅ Create Always Free Oracle Autonomous Database via Terraform
 - ✅ Create and configure schema users with proper privileges
@@ -359,6 +455,15 @@ This single command will:
 - ✅ Load test data and run comprehensive validation
 - ✅ Provide enhanced connection scripts and documentation
 - ✅ **ZERO COST** - Always Free tier protection enforced
+
+### Local Development Configuration
+
+- **Ansible config:** `.ansible/ansible.cfg`
+- **Inventory:** `.ansible/inventory/localhost.yml` 
+- **Role defaults:** `ansible/roles/oracle_cloud_automation/defaults/main.yml`
+- **Virtual environment:** `.venv/` (recommended)
+- **Always Free tier protection:** Enabled by default
+- **No sudo privileges required:** All user-space installation
 
 ### Option 2: GitHub Actions (Team Workflows)
 
@@ -368,7 +473,7 @@ This single command will:
 gh workflow run provision-infrastructure.yml
 ```
 
-#### Application Development (Frequent - Daily/Weekly)
+#### Application Development (Frequent - Daily/Weekly)  
 ```bash
 # Deploy complete schema and application
 gh workflow run deploy-oracle-packages.yml -f deployment_action=deploy
