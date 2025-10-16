@@ -1,0 +1,213 @@
+---
+# Schema Management Tasks
+# Handles Oracle schema lifecycle operations for different deployment actions
+
+- name: Schema Management Phase
+  block:
+    - name: Display schema management banner
+      ansible.builtin.debug:
+        msg: |
+          [SCHEMA] Starting schema management for action: {{ deployment_action }}
+          Database: {{ infrastructure.database_name.value | default('PARTTEST') }}
+          Schema User: {{ schema_user | default('partition_test') }}
+
+    - name: Get database connection details
+      block:
+        - name: Check if infrastructure outputs are available
+          ansible.builtin.stat:
+            path: "{{ terraform_dir | default('../terraform') }}/outputs.json"
+          register: terraform_outputs_file
+
+        - name: Load infrastructure outputs (if available)
+          ansible.builtin.include_vars:
+            file: "{{ terraform_dir | default('../terraform') }}/outputs.json"
+            name: infrastructure
+          when: terraform_outputs_file.stat.exists
+
+        - name: Set default database connection details (fallback)
+          ansible.builtin.set_fact:
+            db_connection:
+              database_name: "{{ infrastructure.database_name.value | default('PARTTEST') }}"
+              admin_username: "{{ infrastructure.admin_username.value | default('ADMIN') }}"
+              admin_password: "{{ infrastructure.admin_password.value | default(lookup('env', 'DB_ADMIN_PASSWORD')) }}"
+              service_name: "{{ infrastructure.database_name.value | default('PARTTEST') }}_HIGH"
+          when: infrastructure is defined
+      rescue:
+        - name: Handle connection details failure
+          ansible.builtin.set_fact:
+            db_connection:
+              database_name: "PARTTEST"
+              admin_username: "ADMIN"
+              admin_password: "{{ lookup('env', 'DB_ADMIN_PASSWORD') | default('PASSWORD') }}"
+              service_name: "PARTTEST_HIGH"
+        
+        - name: Log connection failure
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] Failed to load infrastructure details, using defaults
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+    - name: Schema drop operations (reset-schema only)
+      when: deployment_action == 'reset-schema'
+      block:
+        - name: Create schema drop script
+          ansible.builtin.template:
+            src: drop_schema.sql.j2
+            dest: "{{ logs_dir | default('./logs') }}/drop_schema.sql"
+            mode: "0600"
+          vars:
+            schema_user: "{{ schema_user | default('partition_test') }}"
+
+        - name: Display schema drop information
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Preparing to drop schema: {{ schema_user | default('partition_test') }}
+              SQL Script: {{ logs_dir | default('./logs') }}/drop_schema.sql
+
+              SQL Commands:
+              DROP USER {{ schema_user | default('partition_test') }} CASCADE;
+
+              Note: This will remove all objects owned by the user.
+
+        - name: Execute schema drop (simulated)
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Would execute schema drop via sqlplus:
+              echo "{{ db_connection.admin_password | default('PASSWORD') }}" | sqlplus -s {{ db_connection.admin_username | default('ADMIN') }}/{{ db_connection.admin_password | default('PASSWORD') }}@{{ db_connection.service_name | default('PARTTEST_HIGH') }} @drop_schema.sql
+
+              [NOTE] Actual SQL execution will be enabled after testing
+      rescue:
+        - name: Handle schema drop failure
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Schema drop operations failed
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+              Continuing with deployment...
+
+    - name: Schema creation operations
+      when: deployment_action in ['reset-schema', 'reset-data']
+      block:
+        - name: Create schema creation script
+          ansible.builtin.template:
+            src: create_schema.sql.j2
+            dest: "{{ logs_dir | default('./logs') }}/create_schema.sql"
+            mode: "0600"
+          vars:
+            schema_user: "{{ schema_user | default('partition_test') }}"
+            schema_password: "{{ schema_password | default('PartitionTest123#') }}"
+
+        - name: Display schema creation information
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Preparing to create schema: {{ schema_user | default('partition_test') }}
+              SQL Script: {{ logs_dir | default('./logs') }}/create_schema.sql
+
+              SQL Commands:
+              CREATE USER {{ schema_user | default('partition_test') }} IDENTIFIED BY "{{ schema_password | default('PartitionTest123#') }}";
+              GRANT CONNECT, RESOURCE TO {{ schema_user | default('partition_test') }};
+              GRANT CREATE TABLE, CREATE SEQUENCE, CREATE PROCEDURE TO {{ schema_user | default('partition_test') }};
+              ALTER USER {{ schema_user | default('partition_test') }} QUOTA UNLIMITED ON DATA;
+
+        - name: Execute schema creation (simulated)
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Would execute schema creation via sqlplus:
+              echo "{{ db_connection.admin_password | default('PASSWORD') }}" | sqlplus -s {{ db_connection.admin_username | default('ADMIN') }}/{{ db_connection.admin_password | default('PASSWORD') }}@{{ db_connection.service_name | default('PARTTEST_HIGH') }} @create_schema.sql
+
+              [NOTE] Actual SQL execution will be enabled after testing
+      rescue:
+        - name: Handle schema creation failure
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Schema creation operations failed
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+              Continuing with deployment...
+
+    - name: Data reset operations (reset-data only)
+      when: deployment_action == 'reset-data'
+      block:
+        - name: Create data reset script
+          ansible.builtin.template:
+            src: reset_data.sql.j2
+            dest: "{{ logs_dir | default('./logs') }}/reset_data.sql"
+            mode: "0600"
+          vars:
+            schema_user: "{{ schema_user | default('partition_test') }}"
+
+        - name: Display data reset information
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Preparing to reset data for schema: {{ schema_user | default('partition_test') }}
+              SQL Script: {{ logs_dir | default('./logs') }}/reset_data.sql
+
+              SQL Commands:
+              -- Truncate all tables in schema
+              -- Reset sequences
+              -- Clear temporary data
+
+              Note: This preserves schema structure but removes all data.
+
+        - name: Execute data reset (simulated)
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Would execute data reset via sqlplus:
+              echo "{{ schema_password | default('PartitionTest123#') }}" | sqlplus -s {{ schema_user | default('partition_test') }}/{{ schema_password | default('PartitionTest123#') }}@{{ db_connection.service_name | default('PARTTEST_HIGH') }} @reset_data.sql
+
+              [NOTE] Actual SQL execution will be enabled after testing
+      rescue:
+        - name: Handle data reset failure
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Data reset operations failed
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+              Continuing with deployment...
+
+    - name: Schema validation
+      when: deployment_action in ['reset-schema', 'reset-data', 'deploy']
+      block:
+        - name: Create schema validation script
+          ansible.builtin.template:
+            src: validate_schema.sql.j2
+            dest: "{{ logs_dir | default('./logs') }}/validate_schema.sql"
+            mode: "0600"
+          vars:
+            schema_user: "{{ schema_user | default('partition_test') }}"
+
+        - name: Execute schema validation (simulated)
+          ansible.builtin.debug:
+            msg: |
+              [SCHEMA] Would validate schema via sqlplus:
+              echo "{{ schema_password | default('PartitionTest123#') }}" | sqlplus -s {{ schema_user | default('partition_test') }}/{{ schema_password | default('PartitionTest123#') }}@{{ db_connection.service_name | default('PARTTEST_HIGH') }} @validate_schema.sql
+
+              Expected validation:
+              - User exists and can connect
+              - Required privileges granted
+              - Schema ready for package deployment
+
+              [NOTE] Actual SQL execution will be enabled after testing
+      rescue:
+        - name: Handle schema validation failure
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Schema validation operations failed
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+              Continuing with deployment...
+
+  rescue:
+    - name: Schema management error handling
+      ansible.builtin.debug:
+        msg: |
+          [ERROR] Schema management failed for action: {{ deployment_action }}
+          Error details: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+          Troubleshooting:
+          1. Check database connectivity
+          2. Verify admin credentials
+          3. Ensure database is in AVAILABLE state
+          4. Check Always Free tier limits
+
+    - name: Fail on schema management error
+      ansible.builtin.fail:
+        msg: "Schema management failed. Check the error details above."
+
+  tags: [schema, database]

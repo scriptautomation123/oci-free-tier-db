@@ -1,0 +1,22 @@
+---
+# Handlers for oracle_cloud_automation role
+# Event-driven tasks that run when notified
+
+- name: restart database
+  ansible.builtin.debug:
+    msg: "Database restart would be triggered here if needed"
+  listen: "restart database"
+
+- name: reload configuration
+  ansible.builtin.debug:
+    msg: "Configuration reload would be triggered here if needed"
+  listen: "reload configuration"
+
+- name: cleanup temporary files
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "/tmp/terraform_*.zip"
+    - "/tmp/oci_install_*.sh"
+  listen: "cleanup temp files"

@@ -1,0 +1,14 @@
+---
+# Main site playbook - Complete Oracle Cloud deployment
+- name: Deploy Complete Oracle Cloud Infrastructure Suite
+  hosts: localhost
+  gather_facts: true
+  become: false
+  
+  vars:
+    oracle_deployment_action: "deploy"
+    oracle_load_test_data: false
+    oracle_deployment_environment: "production"
+  
+  roles:
+    - oracle_cloud_automation

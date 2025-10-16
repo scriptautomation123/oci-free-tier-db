@@ -50,3 +50,4 @@ id_dsa
 *.temp
 .cache/
 .specstory/
+*.venv/

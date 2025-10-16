@@ -1,0 +1,14 @@
+---
+# Resource cleanup playbook
+- name: Cleanup Oracle Cloud Resources
+  hosts: localhost
+  gather_facts: true
+  become: false
+  
+  vars:
+    oracle_deployment_action: "cleanup"
+    oracle_deployment_environment: "cleanup"
+  
+  roles:
+    - role: oracle_cloud_automation
+      tags: [cleanup]

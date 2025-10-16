@@ -1,0 +1,8 @@
+---
+# Simple wrapper playbook for environment setup
+- name: Setup Local Development Environment
+  hosts: localhost
+  gather_facts: true
+  tasks:
+    - name: Setup local environment
+      ansible.builtin.include_tasks: tasks/setup-local-environment.yml

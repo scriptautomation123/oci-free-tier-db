@@ -1,0 +1,127 @@
+---
+# Cleanup tasks for oracle_cloud_automation role
+# Safe resource destruction with comprehensive verification
+
+- name: Map role variables for cleanup
+  ansible.builtin.set_fact:
+    logs_dir: "{{ oracle_logs_dir }}"
+    workspace_path: "{{ oracle_workspace_path }}"
+    local_bin_dir: "{{ oracle_local_bin_dir }}"
+    config_dir: "{{ oracle_config_dir }}"
+    terraform_dir: "{{ oracle_config_dir }}"
+
+- name: Display cleanup warning banner
+  ansible.builtin.debug:
+    msg: |
+      +------------------------------------------------------------------+
+      |              Oracle Cloud Resource Cleanup                      |
+      |              ALWAYS FREE TIER PROTECTION                        |
+      |                                                                  |
+      |  [WARNING] This will destroy your database and ALL data!        |
+      |                                                                  |
+      |  This will safely remove:                                       |
+      |  • Oracle Autonomous Database                                   |
+      |  • Object Storage bucket and contents                           |
+      |  • All networking resources                                     |
+      |  • Local configuration files                                    |
+      +------------------------------------------------------------------+
+
+- name: Check for existing resources
+  block:
+    - name: Check Terraform state
+      ansible.builtin.stat:
+        path: "{{ terraform_dir }}/terraform.tfstate"
+      register: tfstate_file
+
+    - name: Get Terraform state list
+      ansible.builtin.command: "{{ local_bin_dir }}/terraform state list"
+      args:
+        chdir: "{{ terraform_dir }}"
+      register: terraform_resources
+      failed_when: false
+      changed_when: false
+      when: tfstate_file.stat.exists
+
+    - name: Display existing resources
+      ansible.builtin.debug:
+        msg: |
+          Resources found in Terraform state:
+          {{ terraform_resources.stdout_lines | default(['None']) | join('\n  ') }}
+      when: terraform_resources is defined and terraform_resources.stdout != ""
+
+    - name: Confirm cleanup action
+      ansible.builtin.pause:
+        prompt: |
+          
+          Are you ABSOLUTELY sure you want to destroy all resources?
+          This action cannot be undone!
+          
+          Type 'yes' to proceed with cleanup
+      register: cleanup_confirmation
+      when: terraform_resources is defined and terraform_resources.stdout != ""
+
+    - name: Abort if not confirmed
+      ansible.builtin.fail:
+        msg: "Cleanup aborted by user"
+      when: 
+        - terraform_resources is defined 
+        - terraform_resources.stdout != ""
+        - cleanup_confirmation.user_input != 'yes'
+
+    - name: Create backup directory
+      ansible.builtin.file:
+        path: "{{ workspace_path }}/backup-{{ ansible_date_time.epoch }}"
+        state: directory
+        mode: "0755"
+      when: terraform_resources is defined and terraform_resources.stdout != ""
+
+    - name: Backup configuration files
+      ansible.builtin.copy:
+        src: "{{ item }}"
+        dest: "{{ workspace_path }}/backup-{{ ansible_date_time.epoch }}/"
+        mode: "0644"
+        backup: true
+      loop:
+        - "{{ terraform_dir }}/terraform.tfvars"
+        - "{{ terraform_dir }}/terraform.tfstate"
+        - "{{ terraform_dir }}/terraform.tfstate.backup"
+      failed_when: false
+      when: terraform_resources is defined and terraform_resources.stdout != ""
+
+    - name: Run Terraform destroy
+      ansible.builtin.command: "{{ local_bin_dir }}/terraform destroy -auto-approve"
+      args:
+        chdir: "{{ terraform_dir }}"
+      register: terraform_destroy
+      when: terraform_resources is defined and terraform_resources.stdout != ""
+
+    - name: Display cleanup completion
+      ansible.builtin.debug:
+        msg: |
+          +------------------------------------------------------------------+
+          |                [SUCCESS] CLEANUP COMPLETED!                     |
+          |                                                                  |
+          |  All Oracle Cloud resources have been safely destroyed.         |
+          |  Configuration files backed up to:                              |
+          |  {{ workspace_path }}/backup-{{ ansible_date_time.epoch }}
+          |                                                                  |
+          |  [COST] Monthly cost after cleanup: $0.00                       |
+          +------------------------------------------------------------------+
+      when: terraform_destroy is defined and terraform_destroy.rc == 0
+
+  rescue:
+    - name: Cleanup error handling
+      ansible.builtin.debug:
+        msg: |
+          [ERROR] Cleanup encountered an error: {{ ansible_failed_result.msg | default('Unknown error') }}
+          
+          Manual cleanup may be required:
+          1. Check Oracle Cloud Console for remaining resources
+          2. Verify Terraform state: terraform state list
+          3. Manual destroy: terraform destroy
+          
+          Configuration backups available in: {{ workspace_path }}/backup-{{ ansible_date_time.epoch }}
+
+    - name: Fail cleanup with error
+      ansible.builtin.fail:
+        msg: "Cleanup failed. Check error messages above."

@@ -80,20 +80,21 @@ jobs:
             VALIDATION_FAILED=1
           fi
 
-          if ! grep -q "storage_size_tbs = 0.02" "$TFVARS_FILE"; then
-            echo "ERROR: storage_size_tbs must be set to 0.02 (20GB) for Always Free tier"
+          if ! grep -q "data_storage_size_in_gb = 20" "$TFVARS_FILE"; then
+            echo "ERROR: data_storage_size_in_gb must be set to 20 (20GB) for Always Free tier"
             VALIDATION_FAILED=1
           fi
 
-          if ! grep -q "auto_scaling_enabled = false" "$TFVARS_FILE"; then
-            echo "ERROR: auto_scaling_enabled must be set to false for Always Free tier"
+          if ! grep -q "is_auto_scaling_enabled = false" "$TFVARS_FILE"; then
+            echo "ERROR: is_auto_scaling_enabled must be set to false for Always Free tier"
             VALIDATION_FAILED=1
           fi
 
           if ! grep -q "acknowledge_free_tier_limits = true" "$TFVARS_FILE"; then
             echo "ERROR: acknowledge_free_tier_limits must be set to true"
             VALIDATION_FAILED=1
-          fi          if [ $VALIDATION_FAILED -eq 1 ]; then
+          fi          
+          if [ $VALIDATION_FAILED -eq 1 ]; then
             echo ""
             echo "COST PROTECTION: Configuration does not meet Always Free tier requirements!"
             exit 1
@@ -154,11 +155,12 @@ jobs:
         run: terraform validate -no-color
         working-directory: ${{ env.TERRAFORM_DIR }}
 
+      # Using TF_VAR_* environment variables directly; no tfvars file generation in CI
+
       - name: Terraform Plan
         id: plan
         run: |
           terraform plan \
-            -var-file=terraform.tfvars.example \
             -out=tfplan \
             -no-color \
             -detailed-exitcode || export PLAN_EXIT=$?
@@ -178,7 +180,7 @@ jobs:
           fi
         working-directory: ${{ env.TERRAFORM_DIR }}
         env:
-          # Pass secrets as Terraform variables
+          # Pass required variables as environment variables (TF_VAR_*)
           TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
           TF_VAR_admin_password: ${{ secrets.DB_ADMIN_PASSWORD }}
         continue-on-error: true
@@ -273,6 +275,8 @@ jobs:
         run: terraform init
         working-directory: ${{ env.TERRAFORM_DIR }}
 
+      # Using TF_VAR_* environment variables directly; no tfvars file generation in CI
+
       - name: Terraform Apply
         id: apply
         run: |
@@ -281,9 +285,7 @@ jobs:
             terraform apply tfplan
           else
             echo "Creating and applying new Terraform plan..."
-            terraform apply \
-              -var-file=terraform.tfvars.example \
-              -auto-approve
+            terraform apply -auto-approve
           fi
         working-directory: ${{ env.TERRAFORM_DIR }}
         env:

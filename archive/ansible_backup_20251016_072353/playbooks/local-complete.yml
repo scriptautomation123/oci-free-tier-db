@@ -1,0 +1,99 @@
+---
+# Oracle Application Deployment Orchestrator
+# Master playbook that coordinates schema and application deployment
+- name: Deploy Complete Oracle Partition Management Suite
+  hosts: localhost
+  gather_facts: true
+  vars:
+    orchestration_log: "{{ logs_dir }}/orchestration-{{ ansible_date_time.epoch }}.log"
+
+  tasks:
+    - name: Set default deployment action
+      ansible.builtin.set_fact:
+        deployment_action: "{{ deployment_action | default('deploy') }}"
+
+    - name: Display Orchestration Banner
+      ansible.builtin.debug:
+        msg: |
+          +------------------------------------------------------------------+
+          |        Oracle Partition Management Suite - Deployment           |
+          |              ALWAYS FREE TIER PROTECTION                        |
+          |                                                                  |
+          |  Action: {{ deployment_action }}                                 |
+          |  This orchestrator manages schema and application lifecycle:     |
+          |  [SCHEMA] Schema management (drop/create)                        |
+          |  [USERS] Schema user and privilege management                    |
+          |  [PACKAGE] Application deployment (Ansible)                      |
+          |  [DATA] Test data loading                                        |
+          |  [TEST] Validation and testing (Ansible)                         |
+          +------------------------------------------------------------------+
+
+    # Phase 1: Local Environment Setup (conditional)
+    - name: "Phase 1: Setup Local Environment"
+      ansible.builtin.include_tasks: tasks/setup-local-environment.yml
+      tags: [environment, setup]
+      when: deployment_action != 'test-only' and github_run is not defined
+
+    # Phase 2: Database Schema Management
+    - name: "Phase 2: Database Schema Management"
+      ansible.builtin.include_tasks: tasks/schema-management.yml
+      tags: [schema, database]
+      when: deployment_action in ['reset-schema', 'reset-data']
+
+    # Phase 3: Database User Management
+    - name: "Phase 3: Database User Management"
+      ansible.builtin.include_tasks: tasks/manage-users.yml
+      tags: [users, security]
+      when: deployment_action in ['deploy', 'reset-schema', 'reset-data']
+
+    # Phase 4: Application Configuration
+    - name: "Phase 4: Configure Database Environment"
+      ansible.builtin.include_tasks: tasks/configure-database.yml
+      tags: [configuration, database]
+      when: deployment_action in ['deploy', 'reset-schema', 'reset-data']
+
+    # Phase 5: Application Deployment
+    - name: "Phase 5: Deploy Oracle Packages"
+      ansible.builtin.include_tasks: tasks/deploy-packages.yml
+      tags: [deployment, packages]
+      when: deployment_action in ['deploy', 'reset-schema', 'reset-data']
+
+    # Phase 6: Data Loading
+    - name: "Phase 6: Load Test Data"
+      when: deployment_action in ['reset-data', 'reset-schema'] or (load_test_data | default(false))
+      block:
+        - name: Load test data
+          ansible.builtin.debug:
+            msg: |
+              [DATA] Loading test data for deployment action: {{ deployment_action }}
+              Note: Test data loading will be implemented in data management tasks
+      rescue:
+        - name: Handle data loading failure
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] Data loading encountered an issue but continuing deployment
+              Error: {{ ansible_failed_result.msg | default('Unknown error') }}
+      tags: [data, testing]
+
+    # Phase 7: Testing and Validation
+    - name: "Phase 7: Run Tests and Validation"
+      ansible.builtin.include_tasks: tasks/test-and-validate.yml
+      tags: [testing, validation]
+      when: deployment_action != 'skip-tests'
+
+    # Final Summary
+    - name: Display Deployment Completion
+      ansible.builtin.debug:
+        msg: |
+          +------------------------------------------------------------------+
+          |               [SUCCESS] DEPLOYMENT COMPLETED!                   |
+          |                                                                  |
+          |  Action: {{ deployment_action }}                                 |
+          |  [OK] Schema: {{ 'Reset and configured' if deployment_action in ['reset-schema', 'reset-data'] else 'Used existing' }}  |
+          |  [OK] Configuration: Database environment configured             |
+          |  [OK] Application: Partition management suite deployed           |
+          |  [OK] Testing: {{ 'Validation tests completed' if deployment_action != 'skip-tests' else 'Tests skipped' }}              |
+          |                                                                  |
+          |  [COST] Cost: $0.00 (Always Free tier)                          |
+          |  [DEPLOY] Ready for use!                                         |
+          +------------------------------------------------------------------+

@@ -1,0 +1,126 @@
+---
+# Main task file for oracle_cloud_automation role
+# Central orchestration point for all Oracle Cloud automation tasks
+
+- name: Display Oracle Cloud Automation Banner
+  ansible.builtin.debug:
+    msg: |
+      +------------------------------------------------------------------+
+      |           Oracle Cloud Infrastructure Automation                |
+      |              ALWAYS FREE TIER PROTECTION ENABLED               |
+      |                                                                  |
+      |  Action: {{ oracle_deployment_action }}
+      |  Environment: {{ oracle_deployment_environment }}
+      |  Cost Protection: {{ 'ENABLED' if oracle_always_free_protection else 'DISABLED' }}
+      |                                                                  |
+      |  This role manages complete Oracle Cloud lifecycle:             |
+      |  [SETUP] Environment and tool installation                      |
+      |  [INFRA] Infrastructure provisioning via Terraform              |
+      |  [CONFIG] Database configuration and setup                      |
+      |  [DEPLOY] Package and application deployment                     |
+      |  [TEST] Comprehensive testing and validation                    |
+      +------------------------------------------------------------------+
+
+- name: Validate role configuration
+  ansible.builtin.assert:
+    that:
+      - oracle_deployment_action in ['deploy', 'reset-schema', 'reset-data', 'test-only', 'setup-only', 'cleanup']
+      - oracle_deployment_environment is defined
+      - oracle_always_free_protection is boolean
+    fail_msg: "Invalid role configuration. Check oracle_deployment_action and other required variables."
+    success_msg: "Role configuration validated successfully"
+
+# Phase 1: Environment Setup
+- name: "Phase 1: Setup Local Environment"
+  ansible.builtin.include_tasks: setup-local-environment.yml
+  when: 
+    - oracle_deployment_action != 'test-only'
+    - github_run is not defined
+    - "'setup' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [setup, environment]
+
+# Phase 2: Infrastructure Provisioning  
+- name: "Phase 2: Provision Cloud Infrastructure"
+  ansible.builtin.include_tasks: provision-infrastructure.yml
+  when:
+    - oracle_deployment_action in ['deploy', 'reset-schema', 'reset-data']
+    - "'infrastructure' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [infrastructure, terraform]
+
+# Phase 3: Schema Management
+- name: "Phase 3: Database Schema Management"
+  ansible.builtin.include_tasks: schema-management.yml
+  when:
+    - oracle_deployment_action in ['reset-schema', 'reset-data']
+    - "'schema' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [schema, database]
+
+# Phase 4: User Management
+- name: "Phase 4: Database User Management"
+  ansible.builtin.include_tasks: manage-users.yml
+  when:
+    - oracle_deployment_action in ['deploy', 'reset-schema', 'reset-data']
+    - "'users' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [users, security]
+
+# Phase 5: Database Configuration
+- name: "Phase 5: Configure Database Environment"
+  ansible.builtin.include_tasks: configure-database.yml
+  when:
+    - oracle_deployment_action in ['deploy', 'reset-schema', 'reset-data']
+    - "'database' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [database, configuration]
+
+# Phase 6: Package Deployment
+- name: "Phase 6: Deploy Oracle Packages"
+  ansible.builtin.include_tasks: deploy-packages.yml
+  when:
+    - oracle_deployment_action in ['deploy', 'reset-schema', 'reset-data']
+    - "'packages' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [packages, deployment]
+
+# Phase 7: Testing and Validation
+- name: "Phase 7: Run Tests and Validation"
+  ansible.builtin.include_tasks: test-and-validate.yml
+  when:
+    - oracle_deployment_action != 'skip-tests'
+    - "'testing' in ansible_run_tags or 'all' in ansible_run_tags or ansible_run_tags == ['all']"
+  tags: [testing, validation]
+
+# Phase 8: Cleanup (when requested)
+- name: "Phase 8: Cleanup Resources"
+  ansible.builtin.include_tasks: cleanup.yml
+  when:
+    - oracle_deployment_action == 'cleanup'
+    - "'cleanup' in ansible_run_tags or ansible_run_tags == ['cleanup']"
+  tags: [cleanup, destroy]
+
+- name: Display role completion summary
+  ansible.builtin.debug:
+    msg: |
+      +------------------------------------------------------------------+
+      |               [SUCCESS] ROLE EXECUTION COMPLETED!               |
+      |                                                                  |
+      |  Action: {{ oracle_deployment_action }}
+      |  Environment: {{ oracle_deployment_environment }}
+      |  Cost: $0.00 (Always Free tier protected)
+      |                                                                  |
+      |  Completed phases based on action and tags:
+      {% if 'setup' in ansible_run_tags or ansible_run_tags == ['all'] %}
+      |  ✅ Environment Setup
+      {% endif %}
+      {% if 'infrastructure' in ansible_run_tags or ansible_run_tags == ['all'] %}
+      |  ✅ Infrastructure Provisioning
+      {% endif %}
+      {% if 'database' in ansible_run_tags or ansible_run_tags == ['all'] %}
+      |  ✅ Database Configuration
+      {% endif %}
+      {% if 'packages' in ansible_run_tags or ansible_run_tags == ['all'] %}
+      |  ✅ Package Deployment
+      {% endif %}
+      {% if 'testing' in ansible_run_tags or ansible_run_tags == ['all'] %}
+      |  ✅ Testing and Validation
+      {% endif %}
+      |                                                                  |
+      |  Oracle Cloud Infrastructure ready for use!
+      +------------------------------------------------------------------+

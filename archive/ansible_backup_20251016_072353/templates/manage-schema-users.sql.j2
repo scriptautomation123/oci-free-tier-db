@@ -1,0 +1,152 @@
+-- Schema User Management SQL Script
+-- Generated: {{ ansible_date_time.iso8601 }}
+-- Purpose: Create and configure schema users for Oracle Database
+
+-- Set error handling
+WHENEVER SQLERROR EXIT SQL.SQLCODE
+SET ECHO ON
+SET FEEDBACK ON
+SET VERIFY OFF
+
+-- Create schema user if it doesn't exist
+PROMPT Creating schema user: {{ schema_user }}
+
+DECLARE
+    user_count NUMBER;
+    user_exists EXCEPTION;
+    PRAGMA EXCEPTION_INIT(user_exists, -01920);
+BEGIN
+    -- Check if user already exists
+    SELECT COUNT(*) INTO user_count 
+    FROM all_users 
+    WHERE username = UPPER('{{ schema_user }}');
+    
+    IF user_count = 0 THEN
+        -- Create new user
+        EXECUTE IMMEDIATE 'CREATE USER {{ schema_user }} IDENTIFIED BY "{{ schema_password }}"';
+        DBMS_OUTPUT.PUT_LINE('User {{ schema_user }} created successfully');
+    ELSE
+        -- Update password for existing user
+        EXECUTE IMMEDIATE 'ALTER USER {{ schema_user }} IDENTIFIED BY "{{ schema_password }}"';
+        DBMS_OUTPUT.PUT_LINE('User {{ schema_user }} password updated');
+    END IF;
+EXCEPTION
+    WHEN user_exists THEN
+        DBMS_OUTPUT.PUT_LINE('User {{ schema_user }} already exists');
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Error managing user {{ schema_user }}: ' || SQLERRM);
+        RAISE;
+END;
+/
+
+-- Grant basic privileges to schema user
+PROMPT Granting basic privileges to {{ schema_user }}
+
+GRANT CONNECT TO {{ schema_user }};
+GRANT RESOURCE TO {{ schema_user }};
+GRANT CREATE SESSION TO {{ schema_user }};
+GRANT CREATE TABLE TO {{ schema_user }};
+GRANT CREATE VIEW TO {{ schema_user }};
+GRANT CREATE SEQUENCE TO {{ schema_user }};
+GRANT CREATE PROCEDURE TO {{ schema_user }};
+GRANT CREATE FUNCTION TO {{ schema_user }};
+GRANT CREATE PACKAGE TO {{ schema_user }};
+GRANT CREATE TYPE TO {{ schema_user }};
+GRANT CREATE SYNONYM TO {{ schema_user }};
+
+-- Grant partition management specific privileges
+PROMPT Granting partition management privileges to {{ schema_user }}
+
+GRANT SELECT ON DBA_TAB_PARTITIONS TO {{ schema_user }};
+GRANT SELECT ON DBA_PART_TABLES TO {{ schema_user }};
+GRANT SELECT ON DBA_TAB_SUBPARTITIONS TO {{ schema_user }};
+GRANT SELECT ON DBA_PART_INDEXES TO {{ schema_user }};
+GRANT SELECT ON DBA_IND_PARTITIONS TO {{ schema_user }};
+GRANT SELECT ON DBA_SEGMENTS TO {{ schema_user }};
+GRANT SELECT ON DBA_OBJECTS TO {{ schema_user }};
+
+-- Grant system privileges for advanced partition operations
+GRANT CREATE ANY TABLE TO {{ schema_user }};
+GRANT ALTER ANY TABLE TO {{ schema_user }};
+GRANT SELECT ANY TABLE TO {{ schema_user }};
+
+-- Set quota on default tablespace (DWCS for Autonomous Database)
+PROMPT Setting tablespace quota for {{ schema_user }}
+
+BEGIN
+    EXECUTE IMMEDIATE 'ALTER USER {{ schema_user }} QUOTA UNLIMITED ON DATA';
+EXCEPTION
+    WHEN OTHERS THEN
+        -- Try alternative tablespace names for Autonomous Database
+        BEGIN
+            EXECUTE IMMEDIATE 'ALTER USER {{ schema_user }} QUOTA UNLIMITED ON USERS';
+        EXCEPTION
+            WHEN OTHERS THEN
+                DBMS_OUTPUT.PUT_LINE('Note: Tablespace quota setting may need manual adjustment');
+                DBMS_OUTPUT.PUT_LINE('Error: ' || SQLERRM);
+        END;
+END;
+/
+
+-- Create schema-specific synonyms for commonly used objects
+PROMPT Creating useful synonyms for {{ schema_user }}
+
+BEGIN
+    -- Connect as the schema user to create synonyms
+    EXECUTE IMMEDIATE 'GRANT CREATE SYNONYM TO {{ schema_user }}';
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Synonym privilege already granted or error: ' || SQLERRM);
+END;
+/
+
+-- Verify user creation and privileges
+PROMPT Verifying user setup for {{ schema_user }}
+
+SELECT 
+    username,
+    account_status,
+    default_tablespace,
+    temporary_tablespace,
+    created
+FROM dba_users 
+WHERE username = UPPER('{{ schema_user }}');
+
+-- Show granted system privileges
+PROMPT System privileges granted to {{ schema_user }}:
+SELECT privilege 
+FROM dba_sys_privs 
+WHERE grantee = UPPER('{{ schema_user }}')
+ORDER BY privilege;
+
+-- Show granted roles
+PROMPT Roles granted to {{ schema_user }}:
+SELECT granted_role 
+FROM dba_role_privs 
+WHERE grantee = UPPER('{{ schema_user }}')
+ORDER BY granted_role;
+
+-- Display completion message
+PROMPT ===============================================
+PROMPT Schema user management completed successfully
+PROMPT User: {{ schema_user }}
+PROMPT Status: Ready for schema operations
+PROMPT ===============================================
+
+-- Test connection capability
+PROMPT Testing connection capability for {{ schema_user }}
+
+DECLARE
+    result VARCHAR2(100);
+BEGIN
+    EXECUTE IMMEDIATE 'SELECT ''CONNECTION_TEST_SUCCESS'' FROM dual' INTO result;
+    DBMS_OUTPUT.PUT_LINE('Connection test: ' || result);
+EXCEPTION
+    WHEN OTHERS THEN
+        DBMS_OUTPUT.PUT_LINE('Connection test failed: ' || SQLERRM);
+END;
+/
+
+-- Set session back to admin user context
+PROMPT Schema user management script completed
+EXIT;

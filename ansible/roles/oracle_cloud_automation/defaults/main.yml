@@ -1,0 +1,45 @@
+---
+# Default variables for oracle_cloud_automation role
+# These can be overridden in playbooks or group_vars
+
+# Deployment configuration
+oracle_deployment_action: "deploy"  # deploy, reset-schema, reset-data, test-only
+oracle_load_test_data: false
+oracle_always_free_protection: true
+oracle_deployment_environment: "development"
+
+# Tool versions
+oracle_terraform_version: "latest"
+oracle_oci_cli_version: "latest"
+
+# Directory paths (relative to project root)
+oracle_local_bin_dir: "{{ ansible_env.HOME }}/.local/bin"
+oracle_local_lib_dir: "{{ ansible_env.HOME }}/.local/lib"
+oracle_logs_dir: "{{ playbook_dir }}/../../logs"
+oracle_config_dir: "{{ playbook_dir }}/../../terraform"
+oracle_workspace_path: "{{ playbook_dir }}/../../"
+oracle_oci_config_dir: "{{ ansible_env.HOME }}/.oci"
+
+# Oracle database configuration
+oracle_database_username: "admin"
+oracle_database_service_name: "your_db_name_high"
+oracle_oracle_home: "{{ ansible_env.HOME }}/.local/lib/oracle"
+oracle_tns_admin: "{{ ansible_env.HOME }}/.local/lib/oracle/network/admin"
+
+# Infrastructure settings
+oracle_max_cpu_cores: 1
+oracle_max_storage_gb: 20
+oracle_whitelisted_ips: []
+
+# Testing configuration
+oracle_benchmark_iterations: 25
+oracle_enable_awr_framework: true
+oracle_performance_monitoring: true
+
+# Always Free tier compliance settings
+oracle_cost_protection:
+  enabled: true
+  max_monthly_cost: 0.00
+  cpu_core_limit: 1
+  storage_limit_gb: 20
+  auto_scaling_disabled: true

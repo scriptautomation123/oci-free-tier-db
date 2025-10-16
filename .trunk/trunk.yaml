@@ -19,6 +19,7 @@ lint:
   disabled:
     - yamllint
   enabled:
+    - shellcheck@0.11.0
     - terraform@1.1.0
     - ansible-lint@25.9.1
     - checkov@3.2.474

@@ -1,0 +1,14 @@
+---
+# Testing and validation only
+- name: Test Oracle Packages and Infrastructure
+  hosts: localhost
+  gather_facts: true
+  become: false
+  
+  vars:
+    oracle_deployment_action: "test-only"
+    oracle_deployment_environment: "testing"
+  
+  roles:
+    - role: oracle_cloud_automation
+      tags: [testing, validation]

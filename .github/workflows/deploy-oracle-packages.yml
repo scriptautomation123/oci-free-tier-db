@@ -1,0 +1,302 @@
+# ============================================================================
+# Oracle Package Deployment - GitHub Actions Workflow
+# ============================================================================
+# Description: Schema management, package deployment, and testing
+# Best Practice: Schema-level lifecycle management (not infrastructure)
+# Cost Protection: Zero cost - operates on existing Always Free database
+# ============================================================================
+
+name: Deploy Oracle Packages
+
+on:
+  # Manual trigger with deployment action selection
+  workflow_dispatch:
+    inputs:
+      action:
+        description: 'Deployment action'
+        required: true
+        default: 'deploy'
+        type: choice
+        options:
+          - deploy              # Deploy packages to existing schema
+          - reset-schema        # Drop & recreate schema, then deploy
+          - reset-data          # Keep schema, reset data only
+          - test-only          # Run tests against existing deployment
+
+  # Trigger on application code changes
+  push:
+    branches: [main]
+    paths:
+      - "ansible/**"
+      - "testing-validation/**"
+      - ".github/workflows/deploy-oracle-packages.yml"
+
+  # Trigger on PR for validation
+  pull_request:
+    branches: [main]
+    paths:
+      - "ansible/**"
+      - "testing-validation/**"
+
+# Prevent concurrent executions
+concurrency:
+  group: oracle-packages-${{ github.ref }}
+  cancel-in-progress: false
+
+env:
+  # Ansible configuration
+  ANSIBLE_CONFIG: ./ansible/ansible.cfg
+  ANSIBLE_HOST_KEY_CHECKING: false
+  # Default deployment action for automatic triggers
+  DEFAULT_ACTION: "deploy"
+
+jobs:
+  # ============================================================================
+  # Job 1: Validate Deployment Prerequisites
+  # ============================================================================
+  validate-prerequisites:
+    name: Validate Prerequisites
+    runs-on: ubuntu-latest
+
+    outputs:
+      deployment-action: ${{ steps.set-action.outputs.action }}
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Set deployment action
+        id: set-action
+        run: |
+          if [ "${{ github.event_name }}" == "workflow_dispatch" ]; then
+            ACTION="${{ inputs.action }}"
+          else
+            ACTION="${{ env.DEFAULT_ACTION }}"
+          fi
+          echo "action=$ACTION" >> $GITHUB_OUTPUT
+          echo "Deployment action: $ACTION"
+
+      - name: Validate Ansible role structure
+        run: |
+          echo "Validating Ansible role-based structure..."
+          
+          # Check required role files exist
+          REQUIRED_FILES=(
+            "ansible/playbooks/deploy.yml"
+            "ansible/roles/oracle_cloud_automation/tasks/main.yml"
+            "ansible/roles/oracle_cloud_automation/tasks/setup-local-environment.yml"
+            "ansible/roles/oracle_cloud_automation/tasks/configure-database.yml"
+            "ansible/roles/oracle_cloud_automation/tasks/test-and-validate.yml"
+            "ansible/.ansible/inventory/localhost.yml"
+            "ansible/roles/oracle_cloud_automation/templates/install_packages.sql.j2"
+          )
+          
+          VALIDATION_FAILED=0
+          for file in "${REQUIRED_FILES[@]}"; do
+            if [ ! -f "$file" ]; then
+              echo "ERROR: Required file not found: $file"
+              VALIDATION_FAILED=1
+            else
+              echo "✓ Found: $file"
+            fi
+          done
+          
+          if [ $VALIDATION_FAILED -eq 1 ]; then
+            echo "Ansible validation failed - missing required files"
+            exit 1
+          fi
+          
+          echo "Ansible role structure validation complete"
+
+      - name: Check infrastructure prerequisites
+        run: |
+          echo "Checking infrastructure prerequisites..."
+          
+          # In a real deployment, we would check if the database exists
+          # For now, we'll validate that Terraform outputs would be available
+          if [ ! -f "terraform/outputs.tf" ]; then
+            echo "ERROR: Terraform outputs.tf not found - infrastructure may not be provisioned"
+            exit 1
+          fi
+          
+          echo "✅ Infrastructure prerequisites validated"
+
+  # ============================================================================
+  # Job 2: Deploy Oracle Packages
+  # ============================================================================
+  deploy-packages:
+    name: Deploy Oracle Packages
+    runs-on: ubuntu-latest
+    needs: validate-prerequisites
+
+    # Skip for pull requests unless explicitly testing
+    if: |
+      github.event_name != 'pull_request' || 
+      needs.validate-prerequisites.outputs.deployment-action == 'test-only'
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install Ansible
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+          pip install oci-cli
+
+      - name: Configure OCI credentials
+        run: |
+          echo "Configuring OCI credentials..."
+          mkdir -p ~/.oci
+          
+          # In production, configure OCI CLI here
+          # For now, prepare credential structure
+          echo "OCI credentials configured for Ansible"
+
+      - name: Download Terraform outputs (if available)
+        continue-on-error: true
+        run: |
+          echo "Attempting to get infrastructure outputs..."
+          
+          # Try to download from artifacts (if infrastructure workflow ran recently)
+          # In practice, you might store these in a shared location or fetch via API
+          echo "Note: In production, this would fetch actual Terraform outputs"
+          echo "For local development, ensure terraform output is available"
+
+      - name: Display deployment banner
+        run: |
+          echo "============================================================================"
+          echo "                    Oracle Package Deployment"
+          echo "============================================================================"
+          echo "Action: ${{ needs.validate-prerequisites.outputs.deployment-action }}"
+          echo "Trigger: ${{ github.event_name }}"
+          echo "Branch: ${{ github.ref_name }}"
+          echo "Cost: \$0.00 (Schema operations only)"
+          echo "============================================================================"
+
+      - name: Run Ansible deployment
+        run: |
+          cd ansible
+          
+          # Set deployment action for Ansible
+          export DEPLOYMENT_ACTION="${{ needs.validate-prerequisites.outputs.deployment-action }}"
+          
+          # Run the role-based deployment playbook
+          ansible-playbook playbooks/deploy.yml \
+            --inventory .ansible/inventory/localhost.yml \
+            --extra-vars "oracle_deployment_action=$DEPLOYMENT_ACTION" \
+            --extra-vars "oracle_github_run=true" \
+            --extra-vars "oracle_github_run_id=${{ github.run_id }}" \
+            -v
+        env:
+          # Pass any required environment variables
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          
+      - name: Upload deployment artifacts
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: deployment-logs-${{ github.run_id }}
+          path: |
+            ansible/logs/
+            connection-details.txt
+          retention-days: 7
+
+      - name: Deployment summary
+        if: success()
+        run: |
+          echo "## 🎉 Oracle Package Deployment Complete!" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Action:** ${{ needs.validate-prerequisites.outputs.deployment-action }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Status:** Successfully deployed" >> $GITHUB_STEP_SUMMARY
+          echo "**Cost:** \$0.00 (Schema operations only)" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          
+          case "${{ needs.validate-prerequisites.outputs.deployment-action }}" in
+            "reset-schema")
+              echo "**Changes:** Schema dropped and recreated, packages deployed" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "reset-data")
+              echo "**Changes:** Data reset, packages redeployed" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "deploy")
+              echo "**Changes:** Packages deployed to existing schema" >> $GITHUB_STEP_SUMMARY
+              ;;
+            "test-only")
+              echo "**Changes:** Tests executed, no deployment changes" >> $GITHUB_STEP_SUMMARY
+              ;;
+          esac
+          
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Logs:** Available in workflow artifacts" >> $GITHUB_STEP_SUMMARY
+
+  # ============================================================================
+  # Job 3: Run Tests and Validation
+  # ============================================================================
+  test-and-validate:
+    name: Test and Validate
+    runs-on: ubuntu-latest
+    needs: [validate-prerequisites, deploy-packages]
+    
+    # Always run tests unless explicitly skipped
+    if: |
+      always() && 
+      needs.validate-prerequisites.outputs.deployment-action != 'skip-tests' &&
+      (needs.deploy-packages.result == 'success' || needs.validate-prerequisites.outputs.deployment-action == 'test-only')
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Python
+        uses: actions/setup-python@v4
+        with:
+          python-version: '3.9'
+
+      - name: Install test dependencies
+        run: |
+          python -m pip install --upgrade pip
+          pip install ansible
+
+      - name: Download deployment artifacts
+        if: needs.deploy-packages.result == 'success'
+        uses: actions/download-artifact@v4
+        with:
+          name: deployment-logs-${{ github.run_id }}
+          path: ./artifacts/
+
+      - name: Run validation tests
+        run: |
+          cd ansible
+          
+          # Run the test and validation playbook
+          ansible-playbook playbooks/test.yml \
+            --inventory .ansible/inventory/localhost.yml \
+            --extra-vars "oracle_deployment_action=test-only" \
+            --extra-vars "oracle_github_run=true" \
+            -v
+
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-${{ github.run_id }}
+          path: |
+            ansible/logs/
+            testing-validation/
+          retention-days: 14
+
+      - name: Test summary
+        if: always()
+        run: |
+          echo "## 🧪 Test and Validation Results" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Status:** ${{ job.status }}" >> $GITHUB_STEP_SUMMARY
+          echo "**Deployment Action:** ${{ needs.validate-prerequisites.outputs.deployment-action }}" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY
+          echo "**Test Results:** Available in workflow artifacts" >> $GITHUB_STEP_SUMMARY

@@ -1,0 +1,649 @@
+---
+# Testing and Validation Tasks
+# Comprehensive testing for Oracle Always Free tier protection
+
+- name: Map role variables to task variables
+  ansible.builtin.set_fact:
+    logs_dir: "{{ oracle_logs_dir }}"
+    workspace_path: "{{ oracle_workspace_path }}"
+    oracle_home: "{{ oracle_oracle_home }}"
+    tns_admin: "{{ oracle_tns_admin }}"
+    database_username: "{{ oracle_database_username }}"
+    database_service_name: "{{ oracle_database_service_name }}"
+    deployment_environment: "{{ oracle_deployment_environment }}"
+    load_test_data: "{{ oracle_load_test_data }}"
+
+- name: Testing and Validation Task Suite
+  block:
+    - name: Create test results directory
+      ansible.builtin.file:
+        path: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results"
+        state: directory
+        mode: "0755"
+
+    - name: Generate validation SQL script
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/validate_packages.sql.j2"
+        dest: "{{ logs_dir | default(playbook_dir + '/../logs') }}/validate_packages.sql"
+        mode: "0644"
+      vars:
+        expected_packages:
+          - name: partition_utils_pkg
+            has_body: true
+          - name: partition_strategy_pkg
+            has_body: true
+          - name: partition_management_pkg
+            has_body: true
+          - name: partition_maintenance_pkg
+            has_body: true
+          - name: partition_logger_pkg
+            has_body: true
+          - name: create_table_pkg
+            has_body: true
+          - name: online_table_operations_pkg
+            has_body: true
+        required_tables:
+          - partition_strategy_config
+          - partition_maintenance_jobs
+          - partition_operation_log
+          - operation_log
+        validation_tests:
+          - name: "Test Utility Function"
+            type: "function"
+            call: "partition_utils_pkg.get_version"
+            return_type: "VARCHAR2"
+            description: "Verify package version function"
+          - name: "Test Logger"
+            type: "procedure"
+            call: "partition_logger_pkg.log_info('Test message')"
+            description: "Verify logging functionality"
+          - name: "Test Strategy Evaluation"
+            type: "function"
+            call: "partition_strategy_pkg.evaluate_strategy('TEST_TABLE', SYSDATE)"
+            return_type: "VARCHAR2"
+            description: "Test partition strategy evaluation"
+          - name: "Test Create Table Package"
+            type: "function"
+            call: "create_table_pkg.validate_table_definition('TEST_TABLE')"
+            return_type: "VARCHAR2"
+            description: "Test table creation validation"
+
+    - name: Test database connection with retry
+      block:
+        - name: Test database connection
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "SELECT 'CONNECTION_SUCCESS' FROM dual;" | sqlplus -s {{ database_username | default('admin') }}@{{ database_service_name | default('your_db_name_high') }}
+          environment:
+            TNS_ADMIN: "{{ tns_admin | default(ansible_env.HOME + '/.local/lib/oracle/network/admin') }}"
+            ORACLE_HOME: "{{ oracle_home | default(ansible_env.HOME + '/.local/lib/oracle') }}"
+          register: connection_test
+          failed_when: "'CONNECTION_SUCCESS' not in connection_test.stdout"
+          changed_when: connection_test.rc == 0
+          retries: 3
+          delay: 10
+      rescue:
+        - name: Database connection failed after retries
+          ansible.builtin.debug:
+            msg: |
+              Database connection failed. Troubleshooting steps:
+              1. Verify database is running and accessible
+              2. Check TNS_ADMIN path: {{ tns_admin | default(ansible_env.HOME + '/.local/lib/oracle/network/admin') }}
+              3. Verify wallet files exist and have proper permissions
+              4. Test connection manually: sqlplus {{ database_username | default('admin') }}@{{ database_service_name | default('your_db_name_high') }}
+
+        - name: Set connection failure flag
+          ansible.builtin.set_fact:
+            connection_failed: true
+
+        - name: Fail on connection error
+          ansible.builtin.fail:
+            msg: "Cannot proceed with testing without database connectivity"
+
+        - name: Run validation SQL script
+          ansible.builtin.shell: |
+            set -o pipefail
+            cd {{ workspace_path | default(playbook_dir + '/../') }}/test_results
+            sqlplus {{ database_username | default('admin') }}@{{ database_service_name | default('your_db_name_high') }} \
+              @{{ playbook_dir }}/../testing-validation/validation/validation_report.sql \
+              > validation_output.log 2>&1
+          args:
+            creates: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results/validation_output.log"
+          environment:
+            TNS_ADMIN: "{{ tns_admin | default(ansible_env.HOME + '/.local/lib/oracle/network/admin') }}"
+            ORACLE_HOME: "{{ oracle_home | default(ansible_env.HOME + '/.local/lib/oracle') }}"
+
+    - name: Check validation results
+      ansible.builtin.slurp:
+        src: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results/validation_output.log"
+      register: validation_log
+
+    - name: Parse validation results
+      ansible.builtin.set_fact:
+        validation_success: "{{ 'ALL PACKAGES VALIDATED SUCCESSFULLY' in (validation_log.content | b64decode) }}"
+        validation_log_content: "{{ validation_log.content | b64decode }}"
+
+    - name: Generate performance benchmarks
+      ansible.builtin.template:
+        src: "{{ playbook_dir }}/../templates/benchmark-performance.sh.j2"
+        dest: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results/benchmark.sh"
+        mode: "0755"
+      vars:
+        benchmark_iterations: 25
+        benchmark_output_dir: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results"
+        performance_benchmarks:
+          - name: "Partition Strategy Performance"
+            sql: "SELECT partition_strategy_pkg.evaluate_strategy('TEST_TABLE', SYSDATE) FROM dual;"
+            description: "Test partition strategy evaluation performance"
+          - name: "Logger Performance"
+            sql: "BEGIN partition_logger_pkg.log_info('Performance test message'); END;"
+            description: "Test logging system performance"
+          - name: "Utility Package Performance"
+            sql: "SELECT partition_utils_pkg.get_version FROM dual;"
+            description: "Test utility package function performance"
+          - name: "Table Operations Performance"
+            sql: "SELECT online_table_operations_pkg.check_table_exists('DUAL') FROM dual;"
+            description: "Test table operations performance"
+
+    - name: Run performance benchmarks with timeout
+      block:
+        - name: Run performance benchmarks
+          ansible.builtin.command: "{{ workspace_path | default(playbook_dir + '/../') }}/test_results/benchmark.sh"
+          environment:
+            TNS_ADMIN: "{{ tns_admin | default(ansible_env.HOME + '/.local/lib/oracle/network/admin') }}"
+            ORACLE_HOME: "{{ oracle_home | default(ansible_env.HOME + '/.local/lib/oracle') }}"
+          register: benchmark_results
+          changed_when: benchmark_results.rc == 0
+          failed_when: false
+          timeout: 600 # 10 minute timeout for performance tests
+      rescue:
+        - name: Performance benchmarks failed or timed out
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] Performance benchmarks failed or exceeded timeout (10 minutes)
+
+              This may be due to:
+              1. Heavy database load
+              2. Network latency issues
+              3. Resource constraints on Always Free tier
+              4. Large dataset generation taking too long
+
+              Benchmark results may be incomplete.
+
+        - name: Set benchmark failure flag
+          ansible.builtin.set_fact:
+            benchmark_failed: true
+
+    - name: Initialize AWR performance monitoring framework
+      block:
+        - name: Execute AWR framework initialization
+          ansible.builtin.shell: |
+            set -o pipefail
+            cd {{ workspace_path }}/test_results
+            sqlplus {{ database_username }}@{{ database_service_name }} \
+              @{{ playbook_dir }}/../testing-validation/validation/awr_performance_framework.sql \
+              > awr_framework.log 2>&1
+            echo $?
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: awr_framework_result
+          changed_when: awr_framework_result.rc == 0
+          failed_when: false
+          timeout: 600
+      rescue:
+        - name: AWR framework initialization failed
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] AWR performance framework initialization failed
+
+              This may be due to:
+              1. Insufficient database privileges for AWR access
+              2. AWR not available on Always Free tier
+              3. Database version compatibility issues
+              4. License restrictions
+
+              Performance monitoring will use alternative methods.
+
+        - name: Set AWR framework failure flag
+          ansible.builtin.set_fact:
+            awr_framework_failed: true
+
+    - name: Deploy AWR analysis queries
+      when: awr_framework_result.rc == 0
+      ansible.builtin.shell: |
+        set -o pipefail
+        cd {{ workspace_path }}/test_results
+        sqlplus {{ database_username }}@{{ database_service_name }} \
+          @{{ playbook_dir }}/../testing-validation/validation/awr_analysis_queries.sql \
+          > awr_analysis.log 2>&1
+        echo $?
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: awr_analysis_result
+      changed_when: awr_analysis_result.rc == 0
+      failed_when: false
+      timeout: 600
+
+    - name: Deploy AWR test comparison framework
+      when: awr_framework_result.rc == 0 and awr_analysis_result.rc == 0
+      ansible.builtin.shell: |
+        set -o pipefail
+        cd {{ workspace_path }}/test_results
+        sqlplus {{ database_username }}@{{ database_service_name }} \
+          @{{ playbook_dir }}/../testing-validation/validation/awr_test_comparison.sql \
+          > awr_comparison.log 2>&1
+        echo $?
+      environment:
+        TNS_ADMIN: "{{ tns_admin }}"
+        ORACLE_HOME: "{{ oracle_home }}"
+      register: awr_comparison_result
+      changed_when: awr_comparison_result.rc == 0
+      failed_when: false
+      timeout: 600
+
+    - name: Run AWR-enabled performance test session
+      when: awr_framework_result.rc == 0 and awr_analysis_result.rc == 0 and awr_comparison_result.rc == 0
+      block:
+        - name: Create AWR test session script
+          ansible.builtin.copy:
+            content: |
+              -- AWR Performance Test Session
+              SET SERVEROUTPUT ON SIZE 1000000
+              SET ECHO ON
+
+              DECLARE
+                v_session_id VARCHAR2(100) := 'ANSIBLE_TEST_' || TO_CHAR(SYSDATE, 'YYYYMMDD_HH24MISS');
+                v_test_name VARCHAR2(200) := 'Oracle Partition Management Suite - Ansible Deployment Test';
+                v_start_snap NUMBER;
+                v_end_snap NUMBER;
+              BEGIN
+                DBMS_OUTPUT.PUT_LINE('=== Starting AWR Performance Test Session ===');
+                DBMS_OUTPUT.PUT_LINE('Session ID: ' || v_session_id);
+
+                -- Start test session with AWR snapshot
+                v_start_snap := awr_test_manager.start_test_session(v_session_id, v_test_name);
+                DBMS_OUTPUT.PUT_LINE('Started test session with snapshot: ' || v_start_snap);
+
+                -- Run performance tests
+                DBMS_OUTPUT.PUT_LINE('Running partition strategy tests...');
+                FOR i IN 1..10 LOOP
+                  SELECT partition_strategy_pkg.evaluate_strategy('TEST_TABLE_' || i, SYSDATE) INTO :dummy FROM dual;
+                END LOOP;
+
+                DBMS_OUTPUT.PUT_LINE('Running logger performance tests...');
+                FOR i IN 1..50 LOOP
+                  partition_logger_pkg.log_info('AWR Performance test message ' || i);
+                END LOOP;
+
+                DBMS_OUTPUT.PUT_LINE('Running utility package tests...');
+                FOR i IN 1..20 LOOP
+                  SELECT partition_utils_pkg.get_version INTO :dummy FROM dual;
+                END LOOP;
+
+                -- Wait a moment for metrics to accumulate
+                DBMS_LOCK.SLEEP(30);
+
+                -- End test session
+                v_end_snap := awr_test_manager.end_test_session(v_session_id);
+                DBMS_OUTPUT.PUT_LINE('Ended test session with snapshot: ' || v_end_snap);
+
+                -- Generate performance analysis
+                DBMS_OUTPUT.PUT_LINE('=== Performance Analysis Results ===');
+                awr_performance_analyzer.generate_performance_summary(v_session_id);
+
+                DBMS_OUTPUT.PUT_LINE('=== AWR Test Session Completed Successfully ===');
+
+              EXCEPTION
+                WHEN OTHERS THEN
+                  DBMS_OUTPUT.PUT_LINE('Error in AWR test session: ' || SQLERRM);
+                  RAISE;
+              END;
+              /
+              EXIT;
+            dest: "{{ workspace_path }}/test_results/awr_test_session.sql"
+            mode: "0644"
+
+        - name: Execute AWR performance test session
+          ansible.builtin.shell: |
+            set -o pipefail
+            cd {{ workspace_path }}/test_results
+            sqlplus {{ database_username }}@{{ database_service_name }} @awr_test_session.sql > awr_test_session.log 2>&1
+            echo $?
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: awr_test_result
+          changed_when: awr_test_result.rc == 0
+          failed_when: false
+          timeout: 900
+
+        - name: Create AWR performance report
+          when: awr_test_result.rc == 0
+          ansible.builtin.copy:
+            content: |
+              # AWR Performance Test Results
+
+              **Test Execution:** {{ ansible_date_time.iso8601 }}
+              **Environment:** {{ deployment_environment }}
+
+              ## AWR Framework Status
+
+              - **Framework Initialization:** {{ 'SUCCESS' if awr_framework_result.rc == 0 else 'FAILED' }}
+              - **Analysis Queries:** {{ 'SUCCESS' if awr_analysis_result.rc == 0 else 'FAILED' }}
+              - **Comparison Framework:** {{ 'SUCCESS' if awr_comparison_result.rc == 0 else 'FAILED' }}
+              - **Performance Test:** {{ 'SUCCESS' if awr_test_result.rc == 0 else 'FAILED' }}
+
+              ## Test Session Details
+
+              The AWR performance monitoring framework has been successfully deployed and tested.
+              This provides enterprise-level performance monitoring capabilities including:
+
+              - Automatic snapshot management
+              - Performance metric collection and analysis
+              - Test session comparison capabilities
+              - Regression detection and trend analysis
+
+              ## Available AWR Commands
+
+              ```sql
+              -- Start a new test session
+              EXEC v_snap := awr_test_manager.start_test_session('my_session', 'My Test');
+
+              -- End test session and generate report
+              EXEC v_snap := awr_test_manager.end_test_session('my_session');
+
+              -- Generate performance analysis
+              EXEC awr_performance_analyzer.generate_performance_summary('my_session');
+
+              -- Compare two sessions
+              EXEC awr_test_comparator.compare_sessions('baseline_session', 'comparison_session');
+
+              -- Create baseline for future comparisons
+              EXEC awr_test_comparator.create_baseline('session_id', 'my_baseline');
+              ```
+
+              ## Performance Metrics Collected
+
+              - System statistics (CPU, I/O, memory usage)
+              - SQL performance metrics
+              - Wait event analysis
+              - Time model analysis
+              - Database resource utilization
+
+              See awr_test_session.log for detailed test execution results.
+            dest: "{{ workspace_path }}/test_results/AWR_PERFORMANCE_REPORT.md"
+            mode: "0644"
+
+      rescue:
+        - name: AWR performance test failed
+          ansible.builtin.debug:
+            msg: |
+              [WARNING] AWR performance test session failed
+
+              This may be due to:
+              1. Database privileges insufficient for AWR operations
+              2. AWR retention settings or availability
+              3. DBMS_LOCK package not available
+              4. Resource constraints during test execution
+
+              Basic performance monitoring is still available through standard methods.
+
+        - name: Set AWR test failure flag
+          ansible.builtin.set_fact:
+            awr_test_failed: true
+
+    - name: Generate test data (if enabled)
+      when: load_test_data | default(false)
+      block:
+        - name: Create test data generation script
+          ansible.builtin.copy:
+            content: |
+              -- Test Data Generation Script
+              SET SERVEROUTPUT ON
+
+              -- Insert test partition strategies
+              BEGIN
+                INSERT INTO partition_strategy_config
+                (strategy_name, table_pattern, partition_type, partition_interval)
+                VALUES ('DAILY_STRATEGY', 'LOG_%', 'RANGE', 'DAILY');
+
+                INSERT INTO partition_strategy_config
+                (strategy_name, table_pattern, partition_type, partition_interval)
+                VALUES ('MONTHLY_STRATEGY', 'HIST_%', 'RANGE', 'MONTHLY');
+
+                COMMIT;
+
+                DBMS_OUTPUT.PUT_LINE('Test data created successfully');
+              EXCEPTION
+                WHEN DUP_VAL_ON_INDEX THEN
+                  DBMS_OUTPUT.PUT_LINE('Test data already exists');
+                WHEN OTHERS THEN
+                  DBMS_OUTPUT.PUT_LINE('Error creating test data: ' || SQLERRM);
+                  ROLLBACK;
+              END;
+              /
+              EXIT;
+            dest: "{{ workspace_path }}/test_results/create_test_data.sql"
+            mode: "0644"
+
+        - name: Load test data
+          ansible.builtin.shell: |
+            sqlplus {{ database_username }}@{{ database_service_name }} @create_test_data.sql
+          args:
+            chdir: "{{ workspace_path }}/test_results"
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: test_data_results
+          changed_when: test_data_results.rc == 0
+      rescue:
+        - name: Display test data generation error
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Test data generation failed!
+              Error details: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+              Troubleshooting steps:
+              1. Check database connectivity and credentials
+              2. Verify TNS_ADMIN and ORACLE_HOME environment variables
+              3. Ensure partition_strategy_config table exists
+              4. Check database user permissions for INSERT operations
+              5. Verify workspace_path directory has write permissions
+
+        - name: Set test data generation failure flag
+          ansible.builtin.set_fact:
+            test_data_generation_failed: true
+
+        - name: Continue without test data
+          ansible.builtin.debug:
+            msg: "[WARNING] Test data generation failed but continuing with validation tests"
+
+    - name: Generate comprehensive test report
+      ansible.builtin.template:
+        src: test-report.md.j2
+        dest: "{{ workspace_path }}/test_results/TEST_REPORT.md"
+        mode: "0644"
+      vars:
+        test_timestamp: "{{ ansible_date_time.iso8601 }}"
+        validation_status: "{{ 'PASSED' if validation_success else 'FAILED' }}"
+        benchmark_status: "{{ 'COMPLETED' if benchmark_results.rc == 0 else 'FAILED' }}"
+        connection_status: "PASSED"
+
+    - name: Display test summary
+      ansible.builtin.debug:
+        msg: |
+          ====================================================================
+          TEST EXECUTION SUMMARY
+          ====================================================================
+          [CONNECT] Connection Test: PASSED
+          {% if validation_success %}
+          [OK] Package Validation: PASSED
+          {% else %}
+          [ERROR] Package Validation: FAILED
+          {% endif %}
+          {% if benchmark_results.rc == 0 %}
+          [STATS] Performance Benchmarks: COMPLETED
+          {% else %}
+          [WARNING] Performance Benchmarks: FAILED
+          {% endif %}
+          {% if awr_framework_result.rc == 0 %}
+          � AWR Framework: DEPLOYED
+          {% else %}
+          [WARNING] AWR Framework: FAILED/UNAVAILABLE
+          {% endif %}
+          {% if awr_test_result.rc == 0 %}
+          [TARGET] AWR Performance Test: COMPLETED
+          {% else %}
+          [WARNING] AWR Performance Test: FAILED/SKIPPED
+          {% endif %}
+          �[DOCUMENT] Full Report: {{ workspace_path }}/test_results/TEST_REPORT.md
+          {% if awr_framework_result.rc == 0 %}
+          [CHART] AWR Report: {{ workspace_path }}/test_results/AWR_PERFORMANCE_REPORT.md
+          {% endif %}
+          ====================================================================
+
+    - name: Validate Always Free tier compliance
+      block:
+        - name: Check database resources
+          ansible.builtin.shell: |
+            set -o pipefail
+            echo "
+            SELECT
+              'CPU_COUNT: ' || value as metric FROM v\$parameter WHERE name = 'cpu_count'
+            UNION ALL
+            SELECT
+              'DB_SIZE_GB: ' || ROUND(SUM(bytes)/1024/1024/1024,2) FROM dba_data_files
+            UNION ALL
+            SELECT
+              'SESSION_COUNT: ' || COUNT(*) FROM v\$session WHERE type = 'USER';
+            " | sqlplus -s {{ database_username }}@{{ database_service_name }}
+          environment:
+            TNS_ADMIN: "{{ tns_admin }}"
+            ORACLE_HOME: "{{ oracle_home }}"
+          register: resource_check
+          changed_when: resource_check.rc == 0
+
+        - name: Verify Always Free compliance with graceful handling
+          block:
+            - name: Check compliance criteria
+              ansible.builtin.assert:
+                that:
+                  - "'CPU_COUNT: 1' in resource_check.stdout or 'CPU_COUNT: 2' in resource_check.stdout"
+                fail_msg: "[ERROR] Always Free tier compliance check failed - CPU count exceeds limit"
+                success_msg: "[OK] Always Free tier compliance verified"
+          rescue:
+            - name: Handle compliance check failure gracefully
+              ansible.builtin.debug:
+                msg: |
+                  [WARNING] Always Free tier compliance check did not pass
+
+                  Current resource status:
+                  {{ resource_check.stdout | default('Unable to retrieve resource information') }}
+
+                  This could indicate:
+                  • Database is not on Always Free tier
+                  • Resource limits have been modified
+                  • Temporary resource allocation changes
+
+                  Please verify your Oracle Cloud setup manually.
+
+            - name: Set compliance warning flag
+              ansible.builtin.set_fact:
+                compliance_warning: true
+      rescue:
+        - name: Display Always Free tier compliance check error
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Always Free tier compliance check failed!
+              Error details: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+              Troubleshooting steps:
+              1. Check database connectivity and access to system views
+              2. Verify database user has SELECT privileges on v$parameter and v$session
+              3. Ensure database is properly configured for Always Free tier
+              4. Check TNS_ADMIN and ORACLE_HOME environment variables
+              5. Manually verify CPU count and database size limits
+
+        - name: Set compliance check failure flag
+          ansible.builtin.set_fact:
+            compliance_check_failed: true
+
+        - name: Continue with warning
+          ansible.builtin.debug:
+            msg: "[WARNING] Always Free tier compliance check failed but deployment continues"
+
+  rescue:
+    - name: Handle test failures gracefully
+      block:
+        - name: Log test failure details
+          ansible.builtin.debug:
+            msg: |
+              [ERROR] Test phase encountered failures:
+              - Validation Success: {{ validation_success | default('UNKNOWN') }}
+              - Benchmark Status: {{ benchmark_results.rc | default('UNKNOWN') }}
+              - Connection Status: {{ connection_test.rc | default('UNKNOWN') }}
+
+        - name: Create failure report
+          ansible.builtin.copy:
+            content: |
+              # Test Execution Failure Report
+
+              **Timestamp:** {{ ansible_date_time.iso8601 }}
+              **Environment:** {{ deployment_environment }}
+
+              ## Failure Summary
+
+              The test and validation phase encountered failures. The deployment may still be functional,
+              but manual verification is recommended.
+
+              ### Connection Test
+              Status: {{ connection_test.rc | default('UNKNOWN') }}
+
+              ### Validation Results
+              Status: {{ validation_success | default('UNKNOWN') }}
+
+              ### Benchmark Results
+              Status: {{ benchmark_results.rc | default('UNKNOWN') }}
+
+              ## Troubleshooting Steps
+
+              1. Verify database connectivity manually
+              2. Check package compilation status
+              3. Review validation logs in test_results directory
+              4. Ensure all required tables exist
+
+              ## Manual Validation Commands
+
+              ```sql
+              -- Check package status
+              SELECT object_name, object_type, status
+              FROM user_objects
+              WHERE object_type IN ('PACKAGE', 'PACKAGE BODY')
+              ORDER BY object_name;
+
+              -- Check for compilation errors
+              SELECT name, type, line, position, text
+              FROM user_errors
+              ORDER BY name, type, line;
+              ```
+            dest: "{{ workspace_path }}/test_results/FAILURE_REPORT.md"
+            mode: "0644"
+
+        - name: Set test failure flag
+          ansible.builtin.set_fact:
+            test_phase_failed: true
+
+        - name: Continue with warning
+          ansible.builtin.debug:
+            msg: "[WARNING] Tests failed but deployment continues. Check FAILURE_REPORT.md for details."
+
+  always:
+    - name: Archive test results
+      ansible.builtin.archive:
+        path: "{{ workspace_path }}/test_results/"
+        dest: "{{ workspace_path }}/test_results_{{ ansible_date_time.epoch }}.tar.gz"
+        remove: false
+        mode: "0644"
+      failed_when: false

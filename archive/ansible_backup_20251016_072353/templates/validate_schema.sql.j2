@@ -1,0 +1,59 @@
+-- Validate Schema SQL Template
+-- This script validates the schema exists and has required privileges
+
+SET ECHO OFF
+SET FEEDBACK ON
+SET HEADING ON
+SET PAGESIZE 20
+
+-- Display current operation
+SELECT 'Validating schema: {{ schema_user }}' FROM DUAL;
+
+-- Check if user exists and can connect
+SELECT 'User Status: ' || account_status || ' (Created: ' || created || ')' as user_info
+FROM dba_users 
+WHERE username = UPPER('{{ schema_user }}');
+
+-- Check user privileges
+SELECT 'Privilege: ' || privilege || ' (Admin Option: ' || admin_option || ')' as privileges
+FROM dba_sys_privs 
+WHERE grantee = UPPER('{{ schema_user }}')
+ORDER BY privilege;
+
+-- Check role grants
+SELECT 'Role: ' || granted_role || ' (Admin Option: ' || admin_option || ')' as roles
+FROM dba_role_privs 
+WHERE grantee = UPPER('{{ schema_user }}')
+ORDER BY granted_role;
+
+-- Check tablespace quota
+SELECT 'Tablespace: ' || tablespace_name || ' (Quota: ' || 
+       CASE 
+         WHEN max_bytes = -1 THEN 'UNLIMITED'
+         ELSE TO_CHAR(max_bytes/1024/1024) || ' MB'
+       END || ')' as quotas
+FROM dba_ts_quotas 
+WHERE username = UPPER('{{ schema_user }}')
+ORDER BY tablespace_name;
+
+-- Check existing objects in schema
+SELECT object_type, COUNT(*) as object_count
+FROM dba_objects 
+WHERE owner = UPPER('{{ schema_user }}')
+  AND object_name NOT LIKE 'BIN$%'
+GROUP BY object_type
+ORDER BY object_type;
+
+-- Validate specific requirements for partition management
+SELECT 'Validation: Schema {{ schema_user }} is ready for partition management' FROM DUAL
+WHERE EXISTS (
+  SELECT 1 FROM dba_users WHERE username = UPPER('{{ schema_user }}') AND account_status = 'OPEN'
+)
+AND EXISTS (
+  SELECT 1 FROM dba_sys_privs WHERE grantee = UPPER('{{ schema_user }}') AND privilege = 'CREATE TABLE'
+)
+AND EXISTS (
+  SELECT 1 FROM dba_role_privs WHERE grantee = UPPER('{{ schema_user }}') AND granted_role = 'RESOURCE'
+);
+
+EXIT;

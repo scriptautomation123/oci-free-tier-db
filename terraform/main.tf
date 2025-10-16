@@ -114,7 +114,7 @@ resource "oci_database_autonomous_database" "partition_test_db" {
     }
 
     precondition {
-      condition     = !var.enforce_free_tier || (var.cpu_core_count <= 1)
+      condition     = !var.enforce_free_tier || ( cpu_core_count <= 1)
       error_message = "When enforce_free_tier is enabled, cpu_core_count must not exceed 1."
     }
 

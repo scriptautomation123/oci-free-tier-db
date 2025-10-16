@@ -1,0 +1,87 @@
+---
+# Database User and Privilege Management Tasks
+# Handles schema user creation, privilege grants, and access control
+
+- name: Create temporary directory for SQL scripts
+  ansible.builtin.file:
+    path: "{{ ansible_dir }}/../temp"
+    state: directory
+    mode: "0755"
+
+- name: Create schema user management SQL script
+  ansible.builtin.template:
+    src: manage-schema-users.sql.j2
+    dest: "{{ ansible_dir }}/../temp/manage-schema-users.sql"
+    mode: "0644"
+  vars:
+    schema_user: "{{ schema_user | default('PARTMGMT') }}"
+    schema_password: "{{ schema_password | default(infrastructure.admin_password.value) }}"
+    database_name: "{{ infrastructure.database_name.value }}"
+
+- name: Execute schema user management
+  ansible.builtin.shell: |
+    export TNS_ADMIN="{{ wallet_dir }}"
+    if command -v sqlplus >/dev/null 2>&1; then
+      echo "exit" | sqlplus -s "{{ infrastructure.admin_username.value }}/{{ infrastructure.admin_password.value }}@{{ infrastructure.database_name.value }}_HIGH" @"{{ ansible_dir }}/../temp/manage-schema-users.sql"
+    else
+      echo "SKIP: Oracle client not available - schema user creation postponed"
+    fi
+  register: schema_user_result
+  changed_when: schema_user_result.stdout is defined and 'User created' in schema_user_result.stdout
+  failed_when: false # Don't fail if Oracle client is not available
+
+- name: Display schema user management result
+  ansible.builtin.debug:
+    msg: |
+      [INFO] Schema User Management Result:
+
+      {% if 'SKIP' in schema_user_result.stdout %}
+      ⚠️  Oracle client not available - schema user creation skipped
+
+      To create schema user manually after installing Oracle client:
+      1. Install Oracle Instant Client
+      2. Run: export TNS_ADMIN="{{ wallet_dir }}"
+      3. Execute: sqlplus {{ infrastructure.admin_username.value }}/[password]@{{ infrastructure.database_name.value }}_HIGH
+      4. Run SQL commands from: temp/manage-schema-users.sql
+      {% else %}
+      ✅ Schema user management completed
+
+      Schema User: {{ schema_user | default('PARTMGMT') }}
+      Status: {{ 'Created/Updated' if schema_user_result.changed else 'Verified' }}
+      {% endif %}
+
+- name: Verify schema user access (if Oracle client available)
+  ansible.builtin.shell: |
+    export TNS_ADMIN="{{ wallet_dir }}"
+    if command -v sqlplus >/dev/null 2>&1; then
+      echo "SELECT USER FROM dual;" | sqlplus -s "{{ schema_user | default('PARTMGMT') }}/{{ schema_password | default(infrastructure.admin_password.value) }}@{{ infrastructure.database_name.value }}_HIGH" 2>/dev/null | grep -v "^$" | tail -1
+    else
+      echo "SKIP: Oracle client not available"
+    fi
+  register: schema_access_test
+  changed_when: false
+  failed_when: false
+
+- name: Display schema access verification
+  ansible.builtin.debug:
+    msg: |
+      [INFO] Schema Access Verification:
+
+      {% if 'SKIP' in schema_access_test.stdout %}
+      ⚠️  Verification skipped - Oracle client not available
+      {% elif schema_user | default('PARTMGMT') | upper in schema_access_test.stdout %}
+      ✅ Schema user "{{ schema_user | default('PARTMGMT') }}" can connect successfully
+      {% else %}
+      ❌ Schema user connection test failed
+      Result: {{ schema_access_test.stdout | default('No output') }}
+      {% endif %}
+
+- name: Create privilege management documentation
+  ansible.builtin.template:
+    src: schema-privileges.md.j2
+    dest: "{{ ansible_dir }}/../schema-privileges.md"
+    mode: "0644"
+  vars:
+    schema_user: "{{ schema_user | default('PARTMGMT') }}"
+    database_info: "{{ infrastructure }}"
+    deployment_time: "{{ ansible_date_time.iso8601 }}"

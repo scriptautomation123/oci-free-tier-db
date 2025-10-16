@@ -1,64 +1,253 @@
-# Oracle Cloud Infrastructure - Always Free Tier Database Suite
 
-🚀 **Production-ready Oracle Cloud automation with Always Free tier protection**
 
-## Description
+# Oracle Cloud Infrastructure Always Free Tier Database Suite
 
-This project provides a comprehensive, production-ready automation suite for deploying Oracle Autonomous Database on Oracle Cloud Infrastructure (OCI) using the Always Free tier. It combines Terraform for infrastructure provisioning with Ansible for orchestration, ensuring cost-effective deployment while maintaining enterprise-grade features.
+## 🚀 Project Overview
 
-**Key Features:**
+This repository provides a secure, zero-cost, production-grade automation suite for Oracle Autonomous Database on Oracle Cloud Infrastructure (OCI) Always Free tier with advanced schema lifecycle management.
 
-- ✅ **Always Free Tier Protection** - Built-in safeguards to prevent unexpected charges
-- ✅ **Hybrid Architecture** - Terraform + Ansible for optimal automation
-- ✅ **Production Ready** - Enterprise patterns with comprehensive testing
-- ✅ **Performance Monitoring** - AWR-based performance analysis framework
-- ✅ **Comprehensive Validation** - Built-in validation script for quality assurance
+**Key Principles:**
+- **Terraform** provisions all infrastructure (databases, networking, storage)
+- **Ansible** manages schema lifecycle, deploys packages, and runs validation
+- **GitHub Actions** orchestrates both infrastructure (rare) and application (frequent) workflows
+- **Schema-based deployment** with granular lifecycle management (deploy/reset-schema/reset-data/test-only)
+- **Always Free Tier Protection** is strictly enforced at every layer
+
+---
+
+## 📂 Repository Structure
+
+```
+├── terraform/                  # Infrastructure as Code (provision via GitHub Actions or CLI)
+│   ├── main.tf
+│   ├── variables.tf
+│   ├── outputs.tf
+│   └── terraform.tfvars.example
+├── ansible/
+│   ├── playbooks/
+│   │   ├── local-complete.yml          # Schema lifecycle orchestrator
+│   │   ├── setup-environment.yml       # Local tool setup
+│   │   └── cleanup-resources.yml       # Safe cleanup
+│   └── tasks/                          # Modular Ansible tasks
+│       ├── schema-management.yml       # Schema lifecycle operations
+│       ├── manage-users.yml           # User and privilege management
+│       ├── configure-database.yml     # Database configuration
+│       ├── deploy-packages.yml        # Package deployment
+│       └── test-and-validate.yml      # Testing & validation
+├── .github/workflows/                  # Two-workflow architecture
+│   ├── provision-infrastructure.yml    # Infrastructure deployment (rare)
+│   └── deploy-oracle-packages.yml     # Schema/application deployment (frequent)
+├── testing-validation/                 # Validation and test scripts
+└── ...
+```
+
+---
+
+## 🛠️ Two-Workflow Architecture
+
+### Infrastructure Workflow (Rare - Monthly/Quarterly)
+**Provision Infrastructure:** Creates the Oracle Autonomous Database and core infrastructure.
+
+```bash
+# Via GitHub Actions (recommended)
+gh workflow run provision-infrastructure.yml
+
+# Via local Terraform CLI
+cd terraform
+terraform init
+terraform plan
+terraform apply
+```
+
+### Application Workflow (Frequent - Daily/Weekly)
+**Schema Lifecycle Management:** Deploy, reset, or test database schemas and applications.
+
+```bash
+# Via GitHub Actions (recommended for teams)
+gh workflow run deploy-oracle-packages.yml -f deployment_action=deploy
+gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-schema
+gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-data
+gh workflow run deploy-oracle-packages.yml -f deployment_action=test-only
+
+# Via local Ansible (for development)
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=deploy
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-schema
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-data
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=test-only
+```
+
+---
+
+## 🔄 Schema Lifecycle Management
+
+### Deployment Actions
+
+| Action | Description | Use Case |
+|--------|-------------|----------|
+| `deploy` | Full schema deployment (drop + create + packages + data) | Initial deployment, major changes |
+| `reset-schema` | Drop and recreate schema structure only | Schema changes, DDL updates |
+| `reset-data` | Reset data while preserving schema | Data refresh, testing |
+| `test-only` | Run validation tests without changes | CI/CD validation, health checks |
+
+### Enhanced Connection Management
+
+**Multiple Connection Patterns:**
+- **Admin Connection:** Full database administration access
+- **Schema Connection:** Application-specific operations using dedicated schema user
+- **Interactive Mode:** Menu-driven connection selection
+- **Read-only Mode:** Safe data exploration without modification risk
+
+```bash
+# Enhanced connection script with schema awareness
+./enhanced-connect-db.sh                    # Interactive mode
+./enhanced-connect-db.sh admin             # Direct admin connection
+./enhanced-connect-db.sh schema            # Schema user connection
+./enhanced-connect-db.sh readonly          # Read-only mode
+DB_SCHEMA_USER=MYUSER ./enhanced-connect-db.sh schema  # Custom schema
+```
+
+---
+
+## 📚 Documentation Index
+
+### Core Documentation
+- 📋 [Implementation Plan](PLAN.md) - Step-by-step implementation guide
+- 🏗️ [Terraform Infrastructure Guide](terraform/TERRAFORM-README.md)
+- 🤖 [Ansible Database Configuration Guide](ansible/ANSIBLE-README.md)
+- 🔄 [GitHub Actions CI/CD Guide](.github/GITHUB_ACTIONS.md)
+- 🧪 [Validation & Testing Guide](testing-validation/VALIDATION_GUIDE.md)
+
+### Enhanced Schema Management
+- 🔐 [Schema Privileges and User Management](schema-privileges.md) - User roles and privilege matrix
+- 📊 [Enhanced Connection Guide](enhanced-connection-details.txt) - Advanced connection patterns
+- 🔧 [Schema Management Operations](ansible/playbooks/tasks/schema-management.yml) - Lifecycle operations
+
+### AI Development Support
+- 🤖 [Copilot/AI Agent Instructions](.github/copilot-instructions.md)
+- 📝 [Principal Engineer Review](PRINCIPAL_ENGINEER_REVIEW.md)
+
+---
+
+## 🔒 Always Free Tier Protection
+
+Multi-layer cost protection ensures zero charges:
+
+### Infrastructure Layer (Terraform)
+- **Variable validation** enforces 1 OCPU, 20GB limits in `terraform/variables.tf`
+- **Lifecycle rules** prevent scaling and deletion in `terraform/main.tf`
+- **Resource constraints** block auto-scaling and premium features
+
+### Application Layer (Ansible)
+- **Runtime assertions** verify compliance during deployment
+- **Configuration validation** checks infrastructure outputs
+- **User confirmation** required before destructive operations
+
+### CI/CD Layer (GitHub Actions)
+- **Workflow validation** prevents cost-incurring changes
+- **Environment protection** isolates Always Free resources
+- **Approval gates** for infrastructure modifications
+
+---
+
+## 💡 Best Practices
+
+### Development Workflow
+1. **Infrastructure First:** Use GitHub Actions `provision-infrastructure.yml` to create database (rare)
+2. **Schema Development:** Use `deploy-oracle-packages.yml` for iterative development (frequent)
+3. **Local Testing:** Use `ansible-playbook local-complete.yml` for rapid iteration
+4. **Connection Management:** Use `enhanced-connect-db.sh` for secure, role-based access
+
+### Schema Management
+- **Use dedicated schema users** instead of admin for application operations
+- **Test with `test-only`** before applying schema changes
+- **Reset data frequently** during development with `reset-data`
+- **Full redeploy sparingly** with `deploy` only for major changes
+
+### Security Guidelines
+- **Store all secrets** in environment variables or GitHub Secrets
+- **Use wallet-based authentication** for all database connections
+- **Apply principle of least privilege** for schema users
+- **Regular password rotation** via deployment variables
+
+### Validation Requirements
+- **Run validation** with [testing-validation/VALIDATION_GUIDE.md](testing-validation/VALIDATION_GUIDE.md) before every commit
+- **Test all connection modes** with enhanced connection scripts
+- **Verify schema privileges** after user management changes
+- **Monitor Always Free compliance** with built-in assertions
+
+---
+
+**This repo is designed for zero-cost, secure, and maintainable Oracle Cloud automation with advanced schema lifecycle management.**
 
 ## Architecture Overview
 
-**Hybrid Orchestration Architecture** - Leveraging the best of both worlds:
+**Two-Workflow Architecture** - Separation of infrastructure (rare) and application (frequent) operations:
 
-- 🏗️ **Terraform**: Infrastructure provisioning and state management
-- 🤖 **Ansible**: Orchestration, configuration, and application deployment
+- 🏗️ **Infrastructure Workflow**: Terraform-based database provisioning (GitHub Actions or CLI)
+- 🤖 **Application Workflow**: Ansible-based schema lifecycle management with granular operations
 
 ```
-├── ansible/                    # Master orchestrator
+├── .github/workflows/          # Two-workflow CI/CD architecture
+│   ├── provision-infrastructure.yml    # Infrastructure deployment (rare)
+│   └── deploy-oracle-packages.yml     # Schema/application deployment (frequent)
+├── ansible/                    # Schema lifecycle orchestrator
 │   ├── playbooks/
-│   │   ├── deploy-complete-suite.yml    # 🎯 Main entry point
+│   │   ├── local-complete.yml          # 🎯 Schema lifecycle coordinator
 │   │   ├── setup-environment.yml       # Environment preparation
-│   │   ├── deploy-database.yml         # Infrastructure deployment
 │   │   └── cleanup-resources.yml       # Safe cleanup
 │   └── tasks/                  # Modular task files
-│       ├── provision-infrastructure.yml # Terraform integration
-│       ├── configure-database.yml      # Database setup
-│       ├── deploy-packages.yml         # Application deployment
+│       ├── schema-management.yml       # Schema drop/create/reset operations
+│       ├── manage-users.yml           # User and privilege management
+│       ├── configure-database.yml      # Database wallet and connection setup
+│       ├── deploy-packages.yml         # Oracle package deployment
 │       └── test-and-validate.yml       # Testing & validation
 ├── terraform/                  # Infrastructure as Code
-│   ├── main.tf                 # Oracle Cloud resources
-│   ├── variables.tf            # Infrastructure variables
-│   ├── outputs.tf              # Infrastructure outputs
-│   └── terraform.tfvars        # Environment configuration
+│   ├── main.tf                 # Oracle Cloud resources with Always Free protection
+│   ├── variables.tf            # Infrastructure variables with validation
+│   ├── outputs.tf              # Infrastructure outputs for Ansible consumption
+│   └── terraform.tfvars.example # Environment configuration template
 ├── testing-validation/         # Quality assurance
-│   ├── validation/             # Validation scripts
-│   └── testing/               # Test suites
-└── docs/                      # Documentation
-    ├── ARCHITECTURE_RECOMMENDATIONS.md
-    ├── MIGRATION_GUIDE.md
-    └── ORCHESTRATION_ANALYSIS.md
+│   ├── validation/             # Validation scripts and performance analysis
+│   └── testing/               # Test data and benchmarking
+└── ansible/templates/          # Enhanced configuration templates
+    ├── enhanced-connect-db.sh.j2      # Multi-mode connection script
+    ├── enhanced-connection-details.txt.j2  # Comprehensive connection guide
+    ├── manage-schema-users.sql.j2     # Schema user management
+    └── schema-privileges.md.j2        # Privilege documentation
 ```
 
 ## Why This Architecture?
 
 ### 🎯 **Perfect Separation of Concerns**
 
-| Component                   | Responsibility                        | Tool      |
-| --------------------------- | ------------------------------------- | --------- |
-| Infrastructure Provisioning | Oracle DB, Object Storage, Networking | Terraform |
-| State Management            | Infrastructure state and dependencies | Terraform |
-| Orchestration               | Multi-phase deployment coordination   | Ansible   |
-| Environment Setup           | Tool installation and configuration   | Ansible   |
-| Application Deployment      | Oracle packages and application logic | Ansible   |
-| Testing & Validation        | Comprehensive testing workflows       | Ansible   |
+| Component | Responsibility | Tool | Frequency |
+| --------- | -------------- | ---- | --------- |
+| Infrastructure Provisioning | Oracle DB, Object Storage, Networking | Terraform | Rare (monthly/quarterly) |
+| State Management | Infrastructure state and dependencies | Terraform | Automatic |
+| Schema Lifecycle | Drop/create/reset schema operations | Ansible | Frequent (daily/weekly) |
+| User Management | Schema users and privilege administration | Ansible | As needed |
+| Package Deployment | Oracle packages and application logic | Ansible | Frequent (daily/weekly) |
+| Testing & Validation | Comprehensive testing workflows | Ansible | Every deployment |
+
+### 🔄 **Schema Lifecycle Management**
+
+Advanced schema operations support iterative development and production maintenance:
+
+| Operation | Purpose | When to Use |
+| --------- | ------- | ----------- |
+| `deploy` | Complete schema deployment | Initial setup, major changes |
+| `reset-schema` | Schema structure reset | DDL changes, structural updates |
+| `reset-data` | Data refresh only | Testing, data corruption recovery |
+| `test-only` | Validation without changes | CI/CD checks, health monitoring |
+
+### 💰 **Multi-Layer Cost Protection**
+
+Enhanced protection ensures zero charges across all operations:
+
+1. **Terraform Layer**: Variable validation, lifecycle rules, Always Free enforcement
+2. **Ansible Layer**: Runtime assertions, infrastructure output validation
+3. **GitHub Actions**: Workflow validation, environment protection
+4. **User Interface**: Clear cost information, confirmation prompts
 
 ### 💰 **Multi-Layer Cost Protection**
 
@@ -68,7 +257,51 @@ This project provides a comprehensive, production-ready automation suite for dep
 
 ### 🔄 **Flexible Deployment Approaches**
 
-This project supports **two complementary approaches** for infrastructure provisioning:
+This project supports **two complementary approaches** for different operational needs:
+
+#### **1. GitHub Actions Workflows (Recommended for Teams)**
+- **Infrastructure Workflow**: `provision-infrastructure.yml` - Creates Oracle database (rare)
+- **Application Workflow**: `deploy-oracle-packages.yml` - Manages schema lifecycle (frequent)
+
+#### **2. Local Development Approach**
+- **Infrastructure**: Direct Terraform CLI execution
+- **Application**: Local Ansible playbook execution with deployment actions
+
+---
+
+## ✨ Key Features
+
+### 🔒 **Enterprise-Grade Security**
+- **Wallet-based authentication** for all database connections
+- **Schema-based user management** with privilege separation
+- **Multi-mode connection scripts** (admin, schema, readonly)
+- **Principle of least privilege** enforcement
+
+### 📊 **Advanced Schema Management**
+- **Granular lifecycle operations** (deploy/reset-schema/reset-data/test-only)
+- **Dedicated schema users** for application isolation
+- **Automated privilege management** with comprehensive documentation
+- **Connection pattern validation** and testing
+
+### 💰 **Zero-Cost Operation**
+- **Always Free Tier Protection** with multi-layer validation
+- **Resource limit enforcement** at infrastructure and application layers
+- **Cost monitoring** and compliance verification
+- **Automatic cleanup** capabilities for safe resource management
+
+### 🚀 **Production-Ready Automation**
+- **Two-workflow architecture** separating infrastructure from application
+- **Comprehensive testing** and validation frameworks
+- **Performance monitoring** with AWR-based analysis
+- **Enterprise patterns** with proper error handling and recovery
+
+### 🔧 **Developer Experience**
+- **Enhanced connection scripts** with interactive mode selection
+- **Comprehensive documentation** generation
+- **Rapid iteration** support with schema reset capabilities
+- **Local development** workflows for fast feedback loops
+
+---
 
 #### **1. GitHub Actions (CI/CD)** - Direct Terraform Execution
 ```yaml
@@ -109,21 +342,65 @@ This project supports **two complementary approaches** for infrastructure provis
 
 This project provides complete automation for deploying the Oracle Partition Management Suite on Oracle Cloud Infrastructure using **Always Free tier resources only**. The solution uses Ansible for orchestration and Terraform for infrastructure provisioning, with comprehensive safety checks to prevent accidental charges.
 
-## 🚀 Quick Start (One Command)
+## 🚀 Quick Start
+
+### Option 1: Local Development (One Command)
 
 ```bash
-# Complete end-to-end deployment
-ansible-playbook ansible/playbooks/deploy-complete-suite.yml
+# Complete end-to-end deployment with schema management
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=deploy
 ```
 
 This single command will:
-
 - ✅ Install and configure OCI CLI and Terraform (no sudo required)
-- ✅ Create Always Free Oracle Autonomous Database
-- ✅ Deploy partition management packages
-- ✅ Load test data and run validation
-- ✅ Provide complete connection information
-- ✅ **ZERO COST** - Always Free tier only
+- ✅ Create Always Free Oracle Autonomous Database via Terraform
+- ✅ Create and configure schema users with proper privileges
+- ✅ Deploy partition management packages to dedicated schema
+- ✅ Load test data and run comprehensive validation
+- ✅ Provide enhanced connection scripts and documentation
+- ✅ **ZERO COST** - Always Free tier protection enforced
+
+### Option 2: GitHub Actions (Team Workflows)
+
+#### Infrastructure Setup (Rare - Monthly/Quarterly)
+```bash
+# Create database infrastructure
+gh workflow run provision-infrastructure.yml
+```
+
+#### Application Development (Frequent - Daily/Weekly)
+```bash
+# Deploy complete schema and application
+gh workflow run deploy-oracle-packages.yml -f deployment_action=deploy
+
+# Reset schema structure for DDL changes
+gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-schema
+
+# Reset data for testing
+gh workflow run deploy-oracle-packages.yml -f deployment_action=reset-data
+
+# Run validation tests only
+gh workflow run deploy-oracle-packages.yml -f deployment_action=test-only
+```
+
+### Schema Development Cycle
+
+```bash
+# 1. Initial deployment
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=deploy
+
+# 2. Iterative development with schema resets
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-schema
+
+# 3. Data refresh during testing
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=reset-data
+
+# 4. Validation testing
+ansible-playbook ansible/playbooks/local-complete.yml -e deployment_action=test-only
+
+# 5. Enhanced connection testing
+./enhanced-connect-db.sh interactive
+```
 
 ## 📁 Directory Structure
 

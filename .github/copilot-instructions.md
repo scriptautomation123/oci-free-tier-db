@@ -225,4 +225,22 @@ oci limits resource-availability get --compartment-id [ID] --limit-name database
 - **Ansible** for orchestration and deployment
 - **Python 3** for OCI SDK and Ansible execution
 
+## Documentation and Summary Files
+
+**IMPORTANT**: Before creating any summary, refactor, changelog, or documentation file about actions taken:
+
+1. **Ask the user first** if they want a summary document created
+2. **Explain what will be included** in the summary (e.g., changes made, metrics, comparisons)
+3. **Wait for user confirmation** before creating the file
+
+**Examples of files that require user approval:**
+- `REFACTOR-SUMMARY.md`
+- `IMPLEMENTATION-SUMMARY.md`
+- `MIGRATION-GUIDE.md`
+- `CHANGELOG.md`
+- `*-COMPARISON.md`
+- `*-VISUAL.txt`
+
+**Exception**: Brief inline summaries in conversation responses are fine. This rule applies only to creating separate summary documents/files.
+
 Remember: This architecture prioritizes **zero cost** operation above all else. Every change must preserve Always Free tier compliance.

@@ -1,0 +1,244 @@
+---
+# Local Environment Setup Tasks
+# ALWAYS FREE TIER PROTECTION: No sudo required, user-space installation
+
+- name: Display Always Free Tier Protection Banner
+  ansible.builtin.debug:
+    msg: |
+      +------------------------------------------------------------------+
+      |              Oracle Cloud Environment Setup                     |
+      |              ALWAYS FREE TIER PROTECTION                        |
+      |                                                                  |
+      |  [OK] No sudo privileges required                               |
+      |  [OK] User-space installation only                              |
+      |  [OK] Always Free tier validation                               |
+      |  [OK] Zero-cost guarantee                                        |
+      |  [OK] Latest versions will be installed                         |
+      +------------------------------------------------------------------+
+
+- name: Create required directories
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: directory
+    mode: "0755"
+  loop:
+    - "{{ local_bin_dir }}"
+    - "{{ local_lib_dir }}"
+    - "{{ logs_dir }}"
+    - "{{ config_dir }}"
+    - "{{ oci_config_dir }}"
+
+- name: Check if running on supported OS
+  ansible.builtin.assert:
+    that:
+      - ansible_system in ['Linux', 'Darwin']
+    fail_msg: "Unsupported OS: {{ ansible_system }}. Only Linux and macOS are supported."
+    success_msg: "[OK] Supported OS detected: {{ ansible_system }}"
+
+# Get latest Terraform version
+- name: Get latest Terraform version
+  ansible.builtin.uri:
+    url: "https://api.github.com/repos/hashicorp/terraform/releases/latest"
+    method: GET
+    return_content: true
+  register: terraform_latest
+  when: terraform_version == "latest"
+  check_mode: false
+
+- name: Set Terraform version to latest
+  ansible.builtin.set_fact:
+    terraform_version: "{{ terraform_latest.json.tag_name | regex_replace('^v', '') }}"
+  when: terraform_version == "latest" and terraform_latest is defined
+
+- name: Set fallback Terraform version for check mode
+  ansible.builtin.set_fact:
+    terraform_version: "1.9.0"
+  when: terraform_version == "latest" and terraform_latest is not defined
+
+- name: Display Terraform version to install
+  ansible.builtin.debug:
+    msg: "[INFO] Terraform version to install: {{ terraform_version }}"
+
+# Install Terraform without sudo
+- name: Check if Terraform is already installed
+  ansible.builtin.stat:
+    path: "{{ local_bin_dir }}/terraform"
+  register: terraform_binary
+
+- name: Get current Terraform version
+  ansible.builtin.command: "{{ local_bin_dir }}/terraform version -json"
+  register: terraform_current_version
+  failed_when: false
+  changed_when: false
+  when: terraform_binary.stat.exists
+
+- name: Install or update Terraform (user-space)
+  when: >
+    not terraform_binary.stat.exists or
+    (terraform_current_version.rc == 0 and
+     terraform_version not in terraform_current_version.stdout)
+  block:
+    - name: Download Terraform
+      ansible.builtin.get_url:
+        url: "https://releases.hashicorp.com/terraform/{{ terraform_version }}/terraform_{{ terraform_version }}_{{ ansible_system | lower }}_amd64.zip"
+        dest: "/tmp/terraform_{{ terraform_version }}.zip"
+        mode: "0644"
+
+    - name: Extract Terraform
+      ansible.builtin.unarchive:
+        src: "/tmp/terraform_{{ terraform_version }}.zip"
+        dest: "{{ local_bin_dir }}"
+        remote_src: true
+        mode: "0755"
+
+    - name: Cleanup Terraform download
+      ansible.builtin.file:
+        path: "/tmp/terraform_{{ terraform_version }}.zip"
+        state: absent
+
+    - name: Verify Terraform installation
+      ansible.builtin.command: "{{ local_bin_dir }}/terraform version"
+      register: terraform_verify
+      changed_when: false
+
+    - name: Display Terraform version
+      ansible.builtin.debug:
+        msg: "[OK] Terraform installed: {{ terraform_verify.stdout_lines[0] }}"
+  rescue:
+    - name: Display Terraform installation error
+      ansible.builtin.debug:
+        msg: |
+          [ERROR] Terraform installation failed!
+          Error details: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+          Troubleshooting steps:
+          1. Check internet connectivity
+          2. Verify {{ local_bin_dir }} directory exists and is writable
+          3. Check if terraform_version variable is set correctly
+          4. Ensure /tmp directory has sufficient space
+
+    - name: Fail with Terraform installation error
+      ansible.builtin.fail:
+        msg: "Terraform installation failed. Please check the error details above and try again."
+
+# Install OCI CLI without sudo (always install latest)
+- name: Check if OCI CLI is installed
+  ansible.builtin.command: which oci
+  register: oci_cli_check
+  failed_when: false
+  changed_when: false
+
+- name: Display OCI CLI version to install
+  ansible.builtin.debug:
+    msg: "[INFO] OCI CLI version to install: {{ oci_cli_version }}"
+
+- name: Install or update OCI CLI (user-space via pip)
+  when: oci_cli_version == "latest"
+  block:
+    - name: Install OCI CLI using pip (venv-aware)
+      ansible.builtin.pip:
+        name: oci-cli
+        state: present
+        # Remove --user flag when in virtual environment
+        extra_args: "{{ '--user' if ansible_env.VIRTUAL_ENV is not defined else '' }}"
+      environment:
+        PATH: "{{ ansible_env.PATH }}:{{ ansible_env.HOME }}/.local/bin"
+
+    - name: Set OCI CLI path based on environment
+      ansible.builtin.set_fact:
+        oci_cli_path: "{{ ansible_env.VIRTUAL_ENV + '/bin/oci' if ansible_env.VIRTUAL_ENV is defined else ansible_env.HOME + '/.local/bin/oci' }}"
+
+    - name: Verify OCI CLI installation
+      ansible.builtin.command: "{{ oci_cli_path }} --version"
+      register: oci_verify
+      changed_when: false
+
+    - name: Display OCI CLI version
+      ansible.builtin.debug:
+        msg: "[OK] OCI CLI installed: {{ oci_verify.stdout }}"
+  rescue:
+    - name: Display OCI CLI installation error
+      ansible.builtin.debug:
+        msg: |
+          [ERROR] OCI CLI installation failed!
+          Error details: {{ ansible_failed_result.msg | default('Unknown error') }}
+
+          Troubleshooting steps:
+          1. Check internet connectivity
+          2. Ensure pip is installed and working
+          3. Verify installation directory exists
+          4. Check Python version compatibility
+          5. Try manual installation: pip install oci-cli
+
+    - name: Fail with OCI CLI installation error
+      ansible.builtin.fail:
+        msg: "OCI CLI installation failed. Please check the error details above and try again."
+
+# Update PATH for current session (only when not in virtual environment)
+- name: Add local bin to PATH
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.bashrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    create: true
+    backup: true
+    mode: "0644"
+  when: ansible_env.SHELL | basename == 'bash' and ansible_env.VIRTUAL_ENV is not defined
+
+- name: Add local bin to PATH (zsh)
+  ansible.builtin.lineinfile:
+    path: "{{ ansible_env.HOME }}/.zshrc"
+    line: 'export PATH="$HOME/.local/bin:$PATH"'
+    create: true
+    backup: true
+    mode: "0644"
+  when: ansible_env.SHELL | basename == 'zsh' and ansible_env.VIRTUAL_ENV is not defined
+
+# Validate installation
+- name: Test OCI CLI functionality
+  ansible.builtin.command: "{{ oci_cli_path | default('oci') }} iam region list"
+  register: oci_test
+  failed_when: false
+  changed_when: false
+
+- name: Display OCI CLI status
+  ansible.builtin.debug:
+    msg: |
+      {% if oci_test.rc == 0 %}
+      [OK] OCI CLI is working and connected
+      {% else %}
+      [WARNING]  OCI CLI installed but needs configuration
+      Run: oci setup config
+      {% endif %}
+
+# Create configuration template
+- name: Check if terraform.tfvars exists
+  ansible.builtin.stat:
+    path: "{{ config_dir }}/terraform.tfvars"
+  register: tfvars_file
+
+- name: Copy terraform.tfvars template
+  ansible.builtin.copy:
+    src: "{{ config_dir }}/terraform.tfvars.example"
+    dest: "{{ config_dir }}/terraform.tfvars"
+    backup: true
+    mode: "0644"
+  when: not tfvars_file.stat.exists
+
+- name: Display setup completion
+  ansible.builtin.debug:
+    msg: |
+      +------------------------------------------------------------------+
+      |                   [SUCCESS] SETUP COMPLETED!                    |
+      |              No sudo privileges required!                       |
+      |                                                                  |
+      |  [OK] Terraform installed to ~/.local/bin/                      |
+      |  [OK] OCI CLI installed                                          |
+      |  [OK] PATH updated in shell configuration                       |
+      |  [OK] Always Free tier protection enabled                       |
+      |                                                                  |
+      |  Next steps:                                                     |
+      |  1. Restart terminal or run: source ~/.bashrc                   |
+      |  2. Configure OCI: oci setup config                             |
+      |  3. Edit terraform/terraform.tfvars with your details           |
+      |  4. Run deployment playbooks                                     |
+      +------------------------------------------------------------------+

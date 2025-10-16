@@ -1,0 +1,14 @@
+---
+# Complete deployment playbook  
+- name: Deploy Complete Oracle Partition Management Suite
+  hosts: localhost
+  gather_facts: true
+  become: false
+  
+  vars:
+    oracle_deployment_action: "deploy"
+    oracle_load_test_data: true
+    oracle_deployment_environment: "development"
+  
+  roles:
+    - oracle_cloud_automation

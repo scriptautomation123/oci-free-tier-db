@@ -1,0 +1,30 @@
+-- Drop Schema SQL Template
+-- This script drops the partition test schema and all associated objects
+
+SET ECHO OFF
+SET FEEDBACK OFF
+SET HEADING OFF
+SET PAGESIZE 0
+
+-- Display current operation
+SELECT 'Dropping schema: {{ schema_user }}' FROM DUAL;
+
+-- Drop user and all objects (CASCADE removes all dependent objects)
+BEGIN
+  EXECUTE IMMEDIATE 'DROP USER {{ schema_user }} CASCADE';
+  DBMS_OUTPUT.PUT_LINE('SUCCESS: Schema {{ schema_user }} dropped successfully');
+EXCEPTION
+  WHEN OTHERS THEN
+    IF SQLCODE = -1918 THEN
+      DBMS_OUTPUT.PUT_LINE('INFO: Schema {{ schema_user }} does not exist - continuing');
+    ELSE
+      DBMS_OUTPUT.PUT_LINE('ERROR: Failed to drop schema {{ schema_user }}: ' || SQLERRM);
+      RAISE;
+    END IF;
+END;
+/
+
+-- Verify schema is gone
+SELECT 'Verification: Schema {{ schema_user }} removal complete' FROM DUAL;
+
+EXIT;

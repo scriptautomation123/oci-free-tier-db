@@ -9,28 +9,35 @@
 acknowledge_free_tier_limits = true
 
 # ==============================================================================
-# REQUIRED: OCI Configuration
+# REQUIRED: OCI Configuration (Set via Environment Variables)
 # ==============================================================================
 
 # Your OCI compartment OCID where resources will be created
-compartment_ocid = "ocid1.compartment.oc1..aaaaaaaa5erdnj52lkeiq3k766rrrb4ywv4qxhakw4htg7y7pqpokqsb63sa"
+# Set via environment variable: export TF_VAR_compartment_ocid="ocid1.compartment.oc1..aaaaaaaa..."
+# Or set in CI/CD secrets as OCI_COMPARTMENT_OCID
+compartment_ocid = null  # Will be provided via TF_VAR_compartment_ocid environment variable
 
 # OCI region for deployment
-region = "us-ashburn-1"
+# Set via environment variable: export TF_VAR_region="us-ashburn-1"
+region = null  # Will be provided via TF_VAR_region environment variable or use default
 
 # ==============================================================================
 # DATABASE CONFIGURATION (ALWAYS FREE OPTIMIZED)
 # ==============================================================================
 
 # Database name (1-8 characters, start with letter)
-db_name = "PARTTEST"
+# Set via environment variable: export TF_VAR_db_name="PARTTEST"
+db_name = null  # Will use default from variables.tf or environment variable
 
 # Oracle Database version
-db_version = "19c"
+# Set via environment variable: export TF_VAR_db_version="19c"
+db_version = null  # Will use default from variables.tf or environment variable
 
 # Admin password (leave empty for auto-generation)
 # Must be 12-30 chars with uppercase, lowercase, number, and special char (#, _)
-admin_password = ""
+# Set via environment variable: export TF_VAR_admin_password="YourSecurePassword123#"
+# Or use auto-generation by leaving empty
+admin_password = ""  # Auto-generated or via TF_VAR_admin_password environment variable
 
 # ==============================================================================
 # ALWAYS FREE TIER LIMITS (DO NOT CHANGE UNLESS YOU WANT CHARGES)
@@ -67,19 +74,25 @@ whitelisted_ips = []
 # ==============================================================================
 
 # Environment name for resource tagging
-environment_name = "partition-test"
+# Set via environment variable: export TF_VAR_environment_name="my-test-env"
+environment_name = null  # Will use default from variables.tf or environment variable
 
 # ==============================================================================
 # OPTIONAL FEATURES
 # ==============================================================================
 
 # Create Object Storage bucket for backups/exports
-create_storage_bucket = true
+# Set via environment variable: export TF_VAR_create_storage_bucket=true
+create_storage_bucket = null  # Will use default from variables.tf or environment variable
 
 # Testing configuration
-load_test_data       = true
-run_validation_tests = true
-test_data_size       = "medium" # small, medium, large
+# Set via environment variables:
+# export TF_VAR_load_test_data=true
+# export TF_VAR_run_validation_tests=true
+# export TF_VAR_test_data_size="medium"
+load_test_data       = null  # Will use default from variables.tf or environment variable
+run_validation_tests = null  # Will use default from variables.tf or environment variable
+test_data_size       = null  # Will use default from variables.tf or environment variable
 
 # ==============================================================================
 # ADVANCED CONFIGURATION (Uncomment to customize)

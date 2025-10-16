@@ -1,0 +1,99 @@
+---
+# Package Deployment Tasks
+# Handles Oracle package installation and configuration
+
+- name: Verify installation files exist
+  ansible.builtin.stat:
+    path: "{{ item }}"
+  register: install_files
+  loop:
+    - "{{ playbook_dir }}/../../table-ops/install/install_suite.sql"
+    - "{{ playbook_dir }}/../../table-ops/install/grant-schema-owner.sql"
+  failed_when: not install_files.results[0].stat.exists
+
+- name: Create package installation script
+  ansible.builtin.template:
+    src: install_packages.sql.j2
+    dest: "{{ wallet_dir }}/install_packages.sql"
+    mode: "0600"
+  vars:
+    database_name: "{{ infrastructure.database_name.value }}"
+    install_suite_path: "{{ playbook_dir }}/../../table-ops/install/install_suite.sql"
+    timestamp: "{{ ansible_date_time.iso8601 }}"
+
+- name: Install Oracle partition management packages
+  ansible.builtin.shell: |
+    set -o pipefail
+    export TNS_ADMIN="{{ wallet_dir }}"
+    echo "{{ infrastructure.admin_username.value }}/{{ infrastructure.admin_password.value }}@{{ infrastructure.database_name.value }}_HIGH" | \
+    sqlplus -s /nolog @"{{ wallet_dir }}/install_packages.sql"
+  environment:
+    TNS_ADMIN: "{{ wallet_dir }}"
+  register: package_installation
+  changed_when: package_installation.rc == 0
+
+- name: Check package installation success
+  ansible.builtin.assert:
+    that:
+      - package_installation.rc == 0
+      - "'ERROR' not in package_installation.stdout"
+    fail_msg: |
+      [ERROR] Package installation failed:
+      {{ package_installation.stdout }}
+      {{ package_installation.stderr }}
+    success_msg: "[OK] Oracle packages installed successfully"
+
+- name: Create package validation script
+  ansible.builtin.template:
+    src: validate_packages.sql.j2
+    dest: "{{ wallet_dir }}/validate_packages.sql"
+    mode: "0600"
+
+- name: Validate package installation
+  ansible.builtin.shell: |
+    set -o pipefail
+    export TNS_ADMIN="{{ wallet_dir }}"
+    echo "{{ infrastructure.admin_username.value }}/{{ infrastructure.admin_password.value }}@{{ infrastructure.database_name.value }}_HIGH" | \
+    sqlplus -s /nolog @"{{ wallet_dir }}/validate_packages.sql"
+  environment:
+    TNS_ADMIN: "{{ wallet_dir }}"
+  register: package_validation
+  changed_when: package_validation.rc == 0
+
+- name: Parse validation results
+  ansible.builtin.set_fact:
+    installed_packages: "{{ package_validation.stdout | regex_findall('VALID.*PACKAGE') | length }}"
+    invalid_packages: "{{ package_validation.stdout | regex_findall('INVALID.*PACKAGE') | length }}"
+
+- name: Display package installation results
+  ansible.builtin.debug:
+    msg: |
+      [PACKAGE] Package Installation Results:
+
+      [OK] Valid packages: {{ installed_packages }}
+      [ERROR] Invalid packages: {{ invalid_packages }}
+
+      {% if invalid_packages | int > 0 %}
+      [WARNING]  Some packages failed to install properly
+      {% else %}
+      [OK] All packages installed successfully
+      {% endif %}
+
+- name: Create package usage examples script
+  ansible.builtin.template:
+    src: run-examples.sh.j2
+    dest: "{{ ansible_dir }}/../run-examples.sh"
+    mode: "0755"
+  vars:
+    database_name: "{{ infrastructure.database_name.value }}"
+    admin_username: "{{ infrastructure.admin_username.value }}"
+    admin_password: "{{ infrastructure.admin_password.value }}"
+    wallet_directory: "{{ wallet_dir }}"
+
+- name: Cleanup installation scripts
+  ansible.builtin.file:
+    path: "{{ item }}"
+    state: absent
+  loop:
+    - "{{ wallet_dir }}/install_packages.sql"
+    - "{{ wallet_dir }}/validate_packages.sql"

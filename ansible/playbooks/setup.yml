@@ -1,0 +1,13 @@
+---
+# Environment setup only
+- name: Setup Oracle Cloud Development Environment
+  hosts: localhost
+  gather_facts: true
+  become: false
+  
+  vars:
+    oracle_deployment_action: "setup-only"
+  
+  roles:
+    - role: oracle_cloud_automation
+      tags: [setup, environment]
