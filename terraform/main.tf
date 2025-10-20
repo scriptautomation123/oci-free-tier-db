@@ -20,9 +20,9 @@ provider "oci" {
   # Authentication via environment variables:
   # OCI_USER_OCID, OCI_TENANCY_OCID, OCI_FINGERPRINT, 
   # OCI_KEY_CONTENT (or OCI_KEY_FILE), OCI_REGION
-  
+
   region = var.region
-  
+
   # Optional: Explicit configuration (if not using environment variables)
   # user_ocid            = var.oci_user_ocid
   # tenancy_ocid         = var.oci_tenancy_ocid  
@@ -113,7 +113,7 @@ resource "oci_database_autonomous_database" "partition_test_db" {
 
     # Validate free tier acknowledgment
     precondition {
-      condition     = !var.is_free_tier || local.is_free_tier_safe
+      condition     = !var.is_free_tier || var.acknowledge_free_tier_limits == true
       error_message = "You must acknowledge Always Free tier limits by setting acknowledge_free_tier_limits = true in terraform.tfvars"
     }
 
@@ -124,13 +124,29 @@ resource "oci_database_autonomous_database" "partition_test_db" {
     }
 
     precondition {
-      condition     = !var.enforce_free_tier || ( cpu_core_count <= 1)
+      condition     = !var.enforce_free_tier || (var.cpu_core_count <= 1)
       error_message = "When enforce_free_tier is enabled, cpu_core_count must not exceed 1."
     }
 
     precondition {
       condition     = !var.enforce_free_tier || (local.storage_gb <= 20)
       error_message = "When enforce_free_tier is enabled, storage must not exceed 20GB."
+    }
+
+    # Always Free tier specific validations
+    precondition {
+      condition     = !var.is_free_tier || (var.cpu_core_count == 1)
+      error_message = "Always Free tier requires exactly 1 CPU core."
+    }
+
+    precondition {
+      condition     = !var.is_free_tier || (var.storage_size_tbs <= 0.02)
+      error_message = "Always Free tier allows maximum 0.02 TB (20GB) storage."
+    }
+
+    precondition {
+      condition     = !var.is_free_tier || (var.auto_scaling_enabled == false)
+      error_message = "Always Free tier requires auto-scaling to be disabled."
     }
   }
 }

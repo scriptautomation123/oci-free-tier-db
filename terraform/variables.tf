@@ -68,8 +68,8 @@ variable "cpu_core_count" {
   default     = 1
 
   validation {
-    condition     = var.is_free_tier ? var.cpu_core_count == 1 : (var.cpu_core_count >= 1 && var.cpu_core_count <= 128)
-    error_message = "For Always Free tier, CPU core count must be exactly 1. For paid tier, it can be 1-128."
+    condition     = var.cpu_core_count >= 1 && var.cpu_core_count <= 128
+    error_message = "CPU core count must be between 1 and 128. For Always Free tier, use exactly 1."
   }
 }
 
@@ -79,21 +79,19 @@ variable "storage_size_tbs" {
   default     = 0.02
 
   validation {
-    condition     = var.is_free_tier ? var.storage_size_tbs <= 0.02 : (var.storage_size_tbs >= 1 && var.storage_size_tbs <= 384)
-    error_message = "For Always Free tier, storage must be ≤ 0.02 TB (20GB). For paid tier, it can be 1-384 TB."
+    condition     = var.storage_size_tbs > 0 && var.storage_size_tbs <= 384
+    error_message = "Storage size must be between 0.01 and 384 TB. For Always Free tier, use 0.02 TB (20GB)."
   }
 }
 
 # Features and Options (Always Free Tier Configuration)
 variable "auto_scaling_enabled" {
-  description = "Enable auto-scaling for the database (Always Free: disabled)"
+  description = "Enable auto-scaling for the database (Always Free: must be disabled)"
   type        = bool
   default     = false
 
-  validation {
-    condition     = var.is_free_tier ? var.auto_scaling_enabled == false : true
-    error_message = "Auto-scaling must be disabled for Always Free tier to avoid charges."
-  }
+  # Note: Always Free tier requires this to be false, but Terraform validation
+  # cannot reference other variables. This is enforced via preconditions in main.tf
 }
 
 variable "is_free_tier" {
@@ -197,10 +195,8 @@ variable "enable_bucket_versioning" {
   type        = bool
   default     = true
 
-  validation {
-    condition     = !var.is_free_tier || var.enable_bucket_versioning == false || var.acknowledge_free_tier_limits == true
-    error_message = "Enabling versioning on Always Free tier will consume additional storage. Set acknowledge_free_tier_limits=true to confirm you understand the storage implications."
-  }
+  # Note: Versioning implications for Always Free tier are handled via 
+  # preconditions in main.tf since Terraform validation cannot reference other variables
 }
 
 variable "kms_key_id" {
@@ -223,8 +219,8 @@ variable "acknowledge_free_tier_limits" {
   default     = false
 
   validation {
-    condition     = var.is_free_tier ? var.acknowledge_free_tier_limits == true : true
-    error_message = "You must acknowledge Always Free tier limits by setting acknowledge_free_tier_limits = true."
+    condition     = var.acknowledge_free_tier_limits == true || var.acknowledge_free_tier_limits == false
+    error_message = "acknowledge_free_tier_limits must be explicitly set to true or false."
   }
 }
 

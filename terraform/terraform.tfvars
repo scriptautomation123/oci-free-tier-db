@@ -15,11 +15,11 @@ acknowledge_free_tier_limits = true
 # Your OCI compartment OCID where resources will be created
 # Set via environment variable: export TF_VAR_compartment_ocid="ocid1.compartment.oc1..aaaaaaaa..."
 # Or set in CI/CD secrets as OCI_COMPARTMENT_OCID
-compartment_ocid = null  # Will be provided via TF_VAR_compartment_ocid environment variable
+compartment_ocid = null # Will be provided via TF_VAR_compartment_ocid environment variable
 
 # OCI region for deployment
 # Set via environment variable: export TF_VAR_region="us-ashburn-1"
-region = null  # Will be provided via TF_VAR_region environment variable or use default
+region = null # Will be provided via TF_VAR_region environment variable or use default
 
 # ==============================================================================
 # DATABASE CONFIGURATION (ALWAYS FREE OPTIMIZED)
@@ -27,17 +27,17 @@ region = null  # Will be provided via TF_VAR_region environment variable or use 
 
 # Database name (1-8 characters, start with letter)
 # Set via environment variable: export TF_VAR_db_name="PARTTEST"
-db_name = null  # Will use default from variables.tf or environment variable
+db_name = null # Will use default from variables.tf or environment variable
 
 # Oracle Database version
 # Set via environment variable: export TF_VAR_db_version="19c"
-db_version = null  # Will use default from variables.tf or environment variable
+db_version = null # Will use default from variables.tf or environment variable
 
 # Admin password (leave empty for auto-generation)
 # Must be 12-30 chars with uppercase, lowercase, number, and special char (#, _)
 # Set via environment variable: export TF_VAR_admin_password="YourSecurePassword123#"
 # Or use auto-generation by leaving empty
-admin_password = ""  # Auto-generated or via TF_VAR_admin_password environment variable
+admin_password = "" # Auto-generated or via TF_VAR_admin_password environment variable
 
 # ==============================================================================
 # ALWAYS FREE TIER LIMITS (DO NOT CHANGE UNLESS YOU WANT CHARGES)
@@ -75,7 +75,7 @@ whitelisted_ips = []
 
 # Environment name for resource tagging
 # Set via environment variable: export TF_VAR_environment_name="my-test-env"
-environment_name = null  # Will use default from variables.tf or environment variable
+environment_name = null # Will use default from variables.tf or environment variable
 
 # ==============================================================================
 # OPTIONAL FEATURES
@@ -83,16 +83,16 @@ environment_name = null  # Will use default from variables.tf or environment var
 
 # Create Object Storage bucket for backups/exports
 # Set via environment variable: export TF_VAR_create_storage_bucket=true
-create_storage_bucket = null  # Will use default from variables.tf or environment variable
+create_storage_bucket = null # Will use default from variables.tf or environment variable
 
 # Testing configuration
 # Set via environment variables:
 # export TF_VAR_load_test_data=true
 # export TF_VAR_run_validation_tests=true
 # export TF_VAR_test_data_size="medium"
-load_test_data       = null  # Will use default from variables.tf or environment variable
-run_validation_tests = null  # Will use default from variables.tf or environment variable
-test_data_size       = null  # Will use default from variables.tf or environment variable
+load_test_data       = null # Will use default from variables.tf or environment variable
+run_validation_tests = null # Will use default from variables.tf or environment variable
+test_data_size       = null # Will use default from variables.tf or environment variable
 
 # ==============================================================================
 # ADVANCED CONFIGURATION (Uncomment to customize)
