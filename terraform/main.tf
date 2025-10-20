@@ -17,7 +17,17 @@ terraform {
 
 # Configure the Oracle Cloud Infrastructure Provider
 provider "oci" {
+  # Authentication via environment variables:
+  # OCI_USER_OCID, OCI_TENANCY_OCID, OCI_FINGERPRINT, 
+  # OCI_KEY_CONTENT (or OCI_KEY_FILE), OCI_REGION
+  
   region = var.region
+  
+  # Optional: Explicit configuration (if not using environment variables)
+  # user_ocid            = var.oci_user_ocid
+  # tenancy_ocid         = var.oci_tenancy_ocid  
+  # fingerprint          = var.oci_fingerprint
+  # private_key          = var.oci_private_key
 }
 
 # Locals for computed values

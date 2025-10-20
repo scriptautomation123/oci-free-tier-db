@@ -80,13 +80,13 @@ jobs:
             VALIDATION_FAILED=1
           fi
 
-          if ! grep -q "data_storage_size_in_gb = 20" "$TFVARS_FILE"; then
-            echo "ERROR: data_storage_size_in_gb must be set to 20 (20GB) for Always Free tier"
+          if ! grep -q "storage_size_tbs = 0.02" "$TFVARS_FILE"; then
+            echo "ERROR: storage_size_tbs must be set to 0.02 (20GB) for Always Free tier"
             VALIDATION_FAILED=1
           fi
 
-          if ! grep -q "is_auto_scaling_enabled = false" "$TFVARS_FILE"; then
-            echo "ERROR: is_auto_scaling_enabled must be set to false for Always Free tier"
+          if ! grep -q "auto_scaling_enabled = false" "$TFVARS_FILE"; then
+            echo "ERROR: auto_scaling_enabled must be set to false for Always Free tier"
             VALIDATION_FAILED=1
           fi
 
@@ -180,6 +180,12 @@ jobs:
           fi
         working-directory: ${{ env.TERRAFORM_DIR }}
         env:
+          # OCI Authentication - Required for Terraform OCI Provider
+          OCI_USER_OCID: ${{ secrets.OCI_USER }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
           # Pass required variables as environment variables (TF_VAR_*)
           TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
           TF_VAR_admin_password: ${{ secrets.DB_ADMIN_PASSWORD }}
@@ -289,6 +295,13 @@ jobs:
           fi
         working-directory: ${{ env.TERRAFORM_DIR }}
         env:
+          # OCI Authentication - Required for Terraform OCI Provider
+          OCI_USER_OCID: ${{ secrets.OCI_USER }}
+          OCI_TENANCY_OCID: ${{ secrets.OCI_TENANCY }}
+          OCI_FINGERPRINT: ${{ secrets.OCI_FINGERPRINT }}
+          OCI_KEY_CONTENT: ${{ secrets.OCI_API_PRIVATE_KEY }}
+          OCI_REGION: ${{ secrets.OCI_REGION }}
+          # Terraform Variables
           TF_VAR_compartment_ocid: ${{ secrets.OCI_COMPARTMENT_OCID }}
           TF_VAR_admin_password: ${{ secrets.DB_ADMIN_PASSWORD }}
 

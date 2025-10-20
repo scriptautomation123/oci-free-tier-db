@@ -44,6 +44,8 @@ WITH table_segments AS (
            ))
       )
 )
+
+
 SELECT 
     UPPER('&schema_name') AS schema_owner,
     UPPER('&table_name') AS table_name,
